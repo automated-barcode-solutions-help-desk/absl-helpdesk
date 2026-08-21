@@ -168,6 +168,40 @@ function retryNotification(id) {
   render();
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function assignTechnician(ticketId, technicianId) {
+  const ticket = state.tickets.find((item) => item.id === ticketId);
+  if (!ticket) return;
+
+  const technicianName = technicianId || "Unassigned";
+
+  if (supabaseClient && isUuid(ticketId) && isUuid(technicianId)) {
+    const { error } = await supabaseClient
+      .from("tickets")
+      .update({ assigned_technician_id: technicianId })
+      .eq("id", ticketId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+  }
+
+  ticket.assignedTechnician = technicianName;
+  state.comments.push({
+    ticketId: ticket.id,
+    author: "Agent",
+    body: `Technician assigned: ${technicianName}.`,
+    createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  });
+  saveState();
+  render();
+  alert("Technician assigned.");
+}
+
 function useInventory(itemId) {
   const item = state.inventory.find((part) => part.id === itemId);
   if (!item || item.qty <= 0) return;
@@ -349,6 +383,20 @@ function renderTicketDetail(ticket) {
           <button class="secondary-button" type="button" data-status="resolved" data-ticket="${ticket.id}">Resolved</button>
           <button class="secondary-button" type="button" data-status="closed" data-ticket="${ticket.id}">Closed</button>
         </div>
+
+        <hr />
+
+        <h3>Technician</h3>
+        <div class="field">
+          <label for="technician-${ticket.id}">Assign technician</label>
+          <select id="technician-${ticket.id}" data-technician-select="${ticket.id}">
+            <option value="">Unassigned</option>
+            <option value="Ruwan" ${ticket.assignedTechnician === "Ruwan" ? "selected" : ""}>Ruwan</option>
+            <option value="Sahan" ${ticket.assignedTechnician === "Sahan" ? "selected" : ""}>Sahan</option>
+            <option value="Milan" ${ticket.assignedTechnician === "Milan" ? "selected" : ""}>Milan</option>
+          </select>
+        </div>
+        <button class="primary-button" type="button" data-assign-technician="${ticket.id}">Assign</button>
 
         <hr />
 
@@ -599,6 +647,14 @@ function bindEvents() {
 
   document.querySelectorAll("[data-retry]").forEach((button) => {
     button.onclick = () => retryNotification(button.dataset.retry);
+  });
+
+  document.querySelectorAll("[data-assign-technician]").forEach((button) => {
+    button.onclick = () => {
+      const ticketId = button.dataset.assignTechnician;
+      const select = document.querySelector(`[data-technician-select="${ticketId}"]`);
+      assignTechnician(ticketId, select ? select.value : "");
+    };
   });
 
   document.querySelectorAll("[data-map]").forEach((button) => {
