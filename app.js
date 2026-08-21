@@ -183,9 +183,113 @@ function useInventory(itemId) {
   render();
 }
 
-function createTicket(event) {
+async function getLoggedInProfile() {
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return null;
+  }
+
+  const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+
+  if (userError || !userData.user) {
+    alert("Please login first.");
+    return null;
+  }
+
+  const { data: profile, error: profileError } = await supabaseClient
+    .from("profiles")
+    .select("id, company_id, approval_status")
+    .eq("id", userData.user.id)
+    .single();
+
+  if (profileError || !profile) {
+    alert("Profile not found. Please register first.");
+    return null;
+  }
+
+  if (profile.approval_status !== "approved") {
+    alert("Your account is waiting for admin approval.");
+    return null;
+  }
+
+  return profile;
+}
+
+async function createRealTicket(ticket) {
+  const profile = await getLoggedInProfile();
+
+  if (!profile) {
+    return null;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("tickets")
+    .insert({
+      company_id: profile.company_id,
+      created_by: profile.id,
+      title: ticket.title,
+      description: ticket.description || ticket.title,
+      priority: ticket.priority.toLowerCase(),
+      location_name: ticket.location,
+      wants_callback: ticket.callback
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return null;
+  }
+
+  alert(`Ticket created: ${data.ticket_number}`);
+  return data;
+}
+
+async function uploadAttachment(ticketId, file, bucketName, fileType) {
+  if (!file || file.size === 0) {
+    return null;
+  }
+
+  const profile = await getLoggedInProfile();
+
+  if (!profile) {
+    return null;
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const filePath = `${ticketId}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabaseClient.storage
+    .from(bucketName)
+    .upload(filePath, file);
+
+  if (uploadError) {
+    alert(uploadError.message);
+    return null;
+  }
+
+  const { error: dbError } = await supabaseClient
+    .from("ticket_attachments")
+    .insert({
+      ticket_id: ticketId,
+      uploaded_by: profile.id,
+      bucket_name: bucketName,
+      file_path: filePath,
+      file_type: fileType
+    });
+
+  if (dbError) {
+    alert(dbError.message);
+    return null;
+  }
+
+  return filePath;
+}
+
+async function createTicket(event) {
   event.preventDefault();
   const data = new FormData(event.target);
+  const voiceFile = data.get("voice");
   const nextNumber = String(state.tickets.length + 1).padStart(6, "0");
   const ticket = {
     id: `TCK-${Date.now()}`,
@@ -202,6 +306,22 @@ function createTicket(event) {
     assignedTechnician: "Unassigned",
     createdAt: new Date().toLocaleString()
   };
+
+  if (supabaseClient) {
+    const realTicket = await createRealTicket(ticket);
+
+    if (!realTicket) {
+      return;
+    }
+
+    ticket.id = realTicket.id;
+    ticket.number = realTicket.ticket_number;
+
+    if (voiceFile && voiceFile.size > 0) {
+      await uploadAttachment(realTicket.id, voiceFile, "ticket-voice-notes", "voice");
+    }
+  }
+
   state.tickets.unshift(ticket);
   state.selectedTicketId = ticket.id;
   state.notifications.unshift({
@@ -386,6 +506,10 @@ function customerView() {
           <div class="field">
             <label for="title">Problem</label>
             <input id="title" name="title" placeholder="Example: scanner not reading barcodes" required />
+          </div>
+          <div class="field">
+            <label for="voice">Voice note</label>
+            <input id="voice" name="voice" type="file" accept="audio/*" />
           </div>
           <div class="form-grid">
             <div class="field">
