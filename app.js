@@ -5,6 +5,96 @@ const supabaseClient =
     ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
     : null;
 
+let currentUser = null;
+let currentProfile = null;
+
+async function loadCurrentUser() {
+  if (!supabaseClient) return null;
+
+  const { data } = await supabaseClient.auth.getUser();
+  currentUser = data.user;
+
+  if (currentUser) {
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", currentUser.id)
+      .single();
+
+    currentProfile = profile;
+  }
+
+  return currentUser;
+}
+
+async function signUpUser(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+
+  const form = new FormData(event.target);
+  const email = form.get("email");
+  const password = form.get("password");
+  const fullName = form.get("fullName");
+  const companyName = form.get("companyName");
+
+  const { data, error } = await supabaseClient.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName,
+        company_name: companyName
+      }
+    }
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Registration created. Please verify your email.");
+  event.target.reset();
+}
+
+async function signInUser(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+
+  const form = new FormData(event.target);
+  const email = form.get("email");
+  const password = form.get("password");
+
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await loadCurrentUser();
+  alert("Login successful.");
+  render();
+}
+
+async function signOutUser() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  currentProfile = null;
+  render();
+}
+
 const initialState = {
   role: "customer",
   selectedTicketId: "TCK-1001",
@@ -364,6 +454,62 @@ function renderTicketDetail(ticket) {
   `;
 }
 
+function authPanel() {
+  if (currentUser) {
+    return `
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <h2>Signed In</h2>
+            <p class="muted">${currentUser.email}</p>
+          </div>
+          <button class="secondary-button" type="button" id="signOutBtn">Sign Out</button>
+        </div>
+      </section>
+      <br />
+    `;
+  }
+
+  return `
+    <section class="hero-grid">
+      <form class="panel" id="loginForm">
+        <h2>Login</h2>
+        <div class="field">
+          <label>Email</label>
+          <input name="email" type="email" required />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input name="password" type="password" required />
+        </div>
+        <button class="primary-button" type="submit">Login</button>
+      </form>
+
+      <form class="panel" id="registerForm">
+        <h2>Register</h2>
+        <div class="field">
+          <label>Full name</label>
+          <input name="fullName" required />
+        </div>
+        <div class="field">
+          <label>Company name</label>
+          <input name="companyName" required />
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input name="email" type="email" required />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input name="password" type="password" minlength="6" required />
+        </div>
+        <button class="primary-button" type="submit">Create Account</button>
+      </form>
+    </section>
+    <br />
+  `;
+}
+
 function customerView() {
   return `
     <section class="hero-grid">
@@ -568,7 +714,7 @@ function render() {
     technician: technicianView,
     admin: adminView
   };
-  app.innerHTML = views[state.role]();
+  app.innerHTML = authPanel() + views[state.role]();
   bindEvents();
 }
 
@@ -620,8 +766,15 @@ function bindEvents() {
   if (newTicketForm) {
     newTicketForm.onsubmit = createTicket;
   }
+  const loginForm = document.querySelector("#loginForm");
+  if (loginForm) loginForm.onsubmit = signInUser;
+
+  const registerForm = document.querySelector("#registerForm");
+  if (registerForm) registerForm.onsubmit = signUpUser;
+
+  const signOutBtn = document.querySelector("#signOutBtn");
+  if (signOutBtn) signOutBtn.onclick = signOutUser;
 }
 
 document.querySelector("#resetDemoBtn").addEventListener("click", resetDemo);
-render();
-
+loadCurrentUser().then(render);
