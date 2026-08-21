@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ABSL Helpdesk</title>
+    <meta
+      name="description"
+      content="Automated Barcode Solutions Pvt Ltd helpdesk starter app."
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Automated Barcode Solutions Pvt Ltd</p>
+        <h1>ABSL Helpdesk</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="connectionBadge" class="badge badge-muted">Supabase configured</span>
+        <button class="ghost-button" id="resetDemoBtn" type="button">Reset</button>
+      </div>
+    </header>
+
+    <nav class="role-nav" aria-label="Role dashboards">
+      <button type="button" data-role="customer">Customer</button>
+      <button type="button" data-role="agent">Agent</button>
+      <button type="button" data-role="technician">Technician</button>
+      <button type="button" data-role="admin">Admin</button>
+    </nav>
+
+    <main id="app" class="app-shell"></main>
+  </body>
+</html>
+
