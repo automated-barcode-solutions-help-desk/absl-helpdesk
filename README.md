@@ -90,7 +90,7 @@ Set these Supabase secrets:
 
 ```bash
 supabase secrets set RESEND_API_KEY=your_resend_key
-supabase secrets set FROM_EMAIL=helpdesk@your-domain.com
+supabase secrets set FROM_EMAIL=helpdesk@automatedbarcode.net
 ```
 
 Deploy it:
