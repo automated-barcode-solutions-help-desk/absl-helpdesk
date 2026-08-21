@@ -291,6 +291,47 @@ function renderTicketList(tickets = state.tickets) {
   `;
 }
 
+async function loadRealTickets() {
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("tickets")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    alert(error.message);
+    return;
+  }
+
+  state.tickets = data.map((ticket) => ({
+    id: ticket.id,
+    number: ticket.ticket_number,
+    title: ticket.title,
+    customer: "Customer",
+    company: "Company",
+    status: ticket.status,
+    priority: ticket.priority,
+    location: ticket.location_name || "",
+    callback: ticket.wants_callback,
+    version: ticket.version,
+    assignedAgent: ticket.assigned_agent_id || "Unassigned",
+    assignedTechnician: ticket.assigned_technician_id || "Unassigned",
+    createdAt: ticket.created_at
+  }));
+
+  if (state.tickets.length > 0) {
+    state.selectedTicketId = state.tickets[0].id;
+  }
+
+  saveState();
+  render();
+}
+
 function renderTicketDetail(ticket) {
   const comments = ticketComments(ticket.id);
   return `
@@ -430,7 +471,7 @@ function agentView() {
       <div class="panel">
         <div class="panel-title">
           <h2>Agent Ticket Queue</h2>
-          <span class="badge badge-muted">Realtime list</span>
+          <button class="secondary-button" type="button" id="loadRealTicketsBtn">Load Supabase Tickets</button>
         </div>
         ${renderTicketList(state.tickets)}
       </div>
@@ -619,6 +660,11 @@ function bindEvents() {
   const newTicketForm = document.querySelector("#newTicketForm");
   if (newTicketForm) {
     newTicketForm.onsubmit = createTicket;
+  }
+
+  const loadRealTicketsBtn = document.querySelector("#loadRealTicketsBtn");
+  if (loadRealTicketsBtn) {
+    loadRealTicketsBtn.onclick = loadRealTickets;
   }
 }
 
