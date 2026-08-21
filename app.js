@@ -216,11 +216,59 @@ function createTicket(event) {
   render();
 }
 
-function addComment(event, ticketId) {
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function addRealComment(ticketId, body) {
+  if (!supabaseClient || !isUuid(ticketId)) {
+    return true;
+  }
+
+  const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+
+  if (userError || !userData.user) {
+    alert("Please login first.");
+    return false;
+  }
+
+  const { data: profile, error: profileError } = await supabaseClient
+    .from("profiles")
+    .select("id")
+    .eq("id", userData.user.id)
+    .single();
+
+  if (profileError || !profile) {
+    alert("Profile not found. Please register first.");
+    return false;
+  }
+
+  const { error } = await supabaseClient.from("ticket_comments").insert({
+    ticket_id: ticketId,
+    author_id: profile.id,
+    body
+  });
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  return true;
+}
+
+async function addComment(event, ticketId) {
   event.preventDefault();
   const data = new FormData(event.target);
   const body = data.get("comment");
   if (!body.trim()) return;
+
+  const saved = await addRealComment(ticketId, body);
+
+  if (!saved) {
+    return;
+  }
+
   state.comments.push({
     ticketId,
     author: statusAuthor(),
