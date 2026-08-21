@@ -7,97 +7,17 @@ const supabaseClient =
 
 let currentUser = null;
 let currentProfile = null;
-
-async function loadCurrentUser() {
-  if (!supabaseClient) return null;
-
-  const { data } = await supabaseClient.auth.getUser();
-  currentUser = data.user;
-
-  if (currentUser) {
-    const { data: profile } = await supabaseClient
-      .from("profiles")
-      .select("*")
-      .eq("id", currentUser.id)
-      .single();
-
-    currentProfile = profile;
-  }
-
-  return currentUser;
-}
-
-async function signUpUser(event) {
-  event.preventDefault();
-  if (!supabaseClient) {
-    alert("Supabase is not configured.");
-    return;
-  }
-
-  const form = new FormData(event.target);
-  const email = form.get("email");
-  const password = form.get("password");
-  const fullName = form.get("fullName");
-  const companyName = form.get("companyName");
-
-  const { data, error } = await supabaseClient.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: fullName,
-        company_name: companyName
-      }
-    }
-  });
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  alert("Registration created. Please verify your email.");
-  event.target.reset();
-}
-
-async function signInUser(event) {
-  event.preventDefault();
-  if (!supabaseClient) {
-    alert("Supabase is not configured.");
-    return;
-  }
-
-  const form = new FormData(event.target);
-  const email = form.get("email");
-  const password = form.get("password");
-
-  const { error } = await supabaseClient.auth.signInWithPassword({
-    email,
-    password
-  });
-
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  await loadCurrentUser();
-  alert("Login successful.");
-  render();
-}
-
-async function signOutUser() {
-  if (!supabaseClient) return;
-  await supabaseClient.auth.signOut();
-  currentUser = null;
-  currentProfile = null;
-  render();
-}
+let ticketChannel = null;
 
 const initialState = {
   role: "customer",
   selectedTicketId: "TCK-1001",
+  company: {
+    id: "DEMO-COMPANY",
+    name: "Automated Barcode Solutions Pvt Ltd",
+    domain: "automatedbarcode.net",
+    accountLimit: 10
+  },
   tickets: [
     {
       id: "TCK-1001",
@@ -179,7 +99,13 @@ let state = loadState();
 
 function loadState() {
   const saved = localStorage.getItem("absl-helpdesk-demo");
-  return saved ? JSON.parse(saved) : structuredClone(initialState);
+  if (!saved) return structuredClone(initialState);
+
+  try {
+    return { ...structuredClone(initialState), ...JSON.parse(saved) };
+  } catch {
+    return structuredClone(initialState);
+  }
 }
 
 function saveState() {
@@ -192,8 +118,16 @@ function resetDemo() {
   render();
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "")
+  );
+}
+
 function statusLabel(status) {
-  return status.replace("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return String(status || "new")
+    .replace("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function statusBadge(status) {
@@ -207,11 +141,143 @@ function statusBadge(status) {
 }
 
 function selectedTicket() {
-  return state.tickets.find((ticket) => ticket.id === state.selectedTicketId) || state.tickets[0];
+  return state.tickets.find((ticket) => ticket.id === state.selectedTicketId) || state.tickets[0] || null;
 }
 
 function ticketComments(ticketId) {
   return state.comments.filter((comment) => comment.ticketId === ticketId);
+}
+
+function currentCompany() {
+  if (!state.company) {
+    state.company = structuredClone(initialState.company);
+  }
+  if (!state.company.domain) {
+    state.company.domain = initialState.company.domain;
+  }
+  return state.company;
+}
+
+async function loadCurrentUser() {
+  if (!supabaseClient) return null;
+
+  const { data } = await supabaseClient.auth.getUser();
+  currentUser = data.user;
+
+  if (!currentUser) {
+    currentProfile = null;
+    return null;
+  }
+
+  const { data: profile } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+
+  currentProfile = profile || null;
+  return currentUser;
+}
+
+async function getLoggedInProfile() {
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return null;
+  }
+
+  if (!currentUser || !currentProfile) {
+    await loadCurrentUser();
+  }
+
+  if (!currentUser) {
+    alert("Please login first.");
+    return null;
+  }
+
+  if (!currentProfile) {
+    alert("Profile not found. Please register first.");
+    return null;
+  }
+
+  if (currentProfile.approval_status !== "approved") {
+    alert("Your account is waiting for admin approval.");
+    return null;
+  }
+
+  return currentProfile;
+}
+
+async function signUpUser(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+
+  const form = new FormData(event.target);
+  const email = form.get("email");
+  const password = form.get("password");
+  const fullName = form.get("fullName");
+  const companyName = form.get("companyName");
+
+  const { error } = await supabaseClient.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName,
+        company_name: companyName
+      }
+    }
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Registration created. Please verify your email.");
+  event.target.reset();
+}
+
+async function signInUser(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+
+  const form = new FormData(event.target);
+  const email = form.get("email");
+  const password = form.get("password");
+
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await loadCurrentUser();
+  subscribeToTicketUpdates();
+  await loadRealTickets({ shouldRender: false });
+  alert("Login successful.");
+  render();
+}
+
+async function signOutUser() {
+  if (!supabaseClient) return;
+  if (ticketChannel) {
+    supabaseClient.removeChannel(ticketChannel);
+    ticketChannel = null;
+  }
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  currentProfile = null;
+  render();
 }
 
 function setRole(role) {
@@ -226,9 +292,32 @@ function openTicket(ticketId) {
   render();
 }
 
-function updateTicketStatus(ticketId, status) {
+async function changeRealTicketStatus(ticketId, newStatus, expectedVersion) {
+  if (!supabaseClient) return false;
+
+  const { error } = await supabaseClient.rpc("change_ticket_status", {
+    p_ticket_id: ticketId,
+    p_new_status: newStatus,
+    p_expected_version: expectedVersion
+  });
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  return true;
+}
+
+async function updateTicketStatus(ticketId, status) {
   const ticket = state.tickets.find((item) => item.id === ticketId);
   if (!ticket) return;
+
+  if (supabaseClient && isUuid(ticket.id)) {
+    const ok = await changeRealTicketStatus(ticket.id, status, ticket.version);
+    if (!ok) return;
+  }
+
   ticket.status = status;
   ticket.version += 1;
   state.notifications.unshift({
@@ -242,10 +331,30 @@ function updateTicketStatus(ticketId, status) {
   render();
 }
 
-function approveUser(approvalId, status) {
+async function updateApproval(profileId, status) {
+  if (supabaseClient && isUuid(profileId)) {
+    const { error } = await supabaseClient
+      .from("profiles")
+      .update({ approval_status: status })
+      .eq("id", profileId);
+
+    if (error) {
+      alert(error.message);
+      return false;
+    }
+  }
+
+  alert(`User ${status}.`);
+  return true;
+}
+
+async function approveUser(approvalId, status) {
+  const updated = await updateApproval(approvalId, status);
+  if (!updated) return;
+
   const approval = state.approvals.find((item) => item.id === approvalId);
-  if (!approval) return;
-  approval.status = status;
+  if (approval) approval.status = status;
+
   saveState();
   render();
 }
@@ -258,11 +367,67 @@ function retryNotification(id) {
   render();
 }
 
-function useInventory(itemId) {
+async function assignTechnician(ticketId, technicianId) {
+  const ticket = state.tickets.find((item) => item.id === ticketId);
+  if (!ticket) return;
+
+  const technicianName = technicianId || "Unassigned";
+
+  if (supabaseClient && isUuid(ticketId) && isUuid(technicianId)) {
+    const { error } = await supabaseClient
+      .from("tickets")
+      .update({ assigned_technician_id: technicianId })
+      .eq("id", ticketId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+  }
+
+  ticket.assignedTechnician = technicianName;
+  state.comments.push({
+    ticketId: ticket.id,
+    author: "Agent",
+    body: `Technician assigned: ${technicianName}.`,
+    createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  });
+  saveState();
+  render();
+  alert("Technician assigned.");
+}
+
+async function consumeRealInventory(ticketId, inventoryItemId, quantity) {
+  if (!supabaseClient) return false;
+
+  const { error } = await supabaseClient.rpc("consume_inventory", {
+    p_ticket_id: ticketId,
+    p_inventory_item_id: inventoryItemId,
+    p_quantity: quantity
+  });
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  alert("Inventory used successfully.");
+  return true;
+}
+
+async function useInventory(itemId) {
   const item = state.inventory.find((part) => part.id === itemId);
   if (!item || item.qty <= 0) return;
-  item.qty -= 1;
+
   const ticket = selectedTicket();
+  if (!ticket) return;
+
+  if (supabaseClient && isUuid(ticket.id) && isUuid(itemId)) {
+    const ok = await consumeRealInventory(ticket.id, itemId, 1);
+    if (!ok) return;
+  }
+
+  item.qty -= 1;
   state.comments.push({
     ticketId: ticket.id,
     author: "Technician",
@@ -274,33 +439,8 @@ function useInventory(itemId) {
 }
 
 async function createRealTicket(ticket) {
-  if (!supabaseClient) {
-    alert("Supabase is not configured.");
-    return null;
-  }
-
-  const { data: userData, error: userError } = await supabaseClient.auth.getUser();
-
-  if (userError || !userData.user) {
-    alert("Please login first.");
-    return null;
-  }
-
-  const { data: profile, error: profileError } = await supabaseClient
-    .from("profiles")
-    .select("id, company_id, approval_status")
-    .eq("id", userData.user.id)
-    .single();
-
-  if (profileError || !profile) {
-    alert("Profile not found. Please register first.");
-    return null;
-  }
-
-  if (profile.approval_status !== "approved") {
-    alert("Your account is waiting for admin approval.");
-    return null;
-  }
+  const profile = await getLoggedInProfile();
+  if (!profile) return null;
 
   const { data, error } = await supabaseClient
     .from("tickets")
@@ -325,9 +465,45 @@ async function createRealTicket(ticket) {
   return data;
 }
 
+async function uploadAttachment(ticketId, file, bucketName, fileType) {
+  if (!file || file.size === 0) return null;
+
+  const profile = await getLoggedInProfile();
+  if (!profile) return null;
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const filePath = `${ticketId}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabaseClient.storage
+    .from(bucketName)
+    .upload(filePath, file);
+
+  if (uploadError) {
+    alert(uploadError.message);
+    return null;
+  }
+
+  const { error: dbError } = await supabaseClient.from("ticket_attachments").insert({
+    ticket_id: ticketId,
+    uploaded_by: profile.id,
+    bucket_name: bucketName,
+    file_path: filePath,
+    file_type: fileType
+  });
+
+  if (dbError) {
+    alert(dbError.message);
+    return null;
+  }
+
+  return filePath;
+}
+
 async function createTicket(event) {
   event.preventDefault();
   const data = new FormData(event.target);
+  const photoFile = data.get("photo");
+  const voiceFile = data.get("voice");
   const nextNumber = String(state.tickets.length + 1).padStart(6, "0");
   const ticket = {
     id: `TCK-${Date.now()}`,
@@ -346,7 +522,19 @@ async function createTicket(event) {
   };
 
   if (supabaseClient) {
-    await createRealTicket(ticket);
+    const realTicket = await createRealTicket(ticket);
+    if (!realTicket) return;
+
+    ticket.id = realTicket.id;
+    ticket.number = realTicket.ticket_number;
+
+    if (photoFile && photoFile.size > 0) {
+      await uploadAttachment(realTicket.id, photoFile, "ticket-photos", "photo");
+    }
+
+    if (voiceFile && voiceFile.size > 0) {
+      await uploadAttachment(realTicket.id, voiceFile, "ticket-voice-notes", "voice");
+    }
   }
 
   state.tickets.unshift(ticket);
@@ -363,11 +551,35 @@ async function createTicket(event) {
   render();
 }
 
-function addComment(event, ticketId) {
+async function addRealComment(ticketId, body) {
+  if (!supabaseClient || !isUuid(ticketId)) return true;
+
+  const profile = await getLoggedInProfile();
+  if (!profile) return false;
+
+  const { error } = await supabaseClient.from("ticket_comments").insert({
+    ticket_id: ticketId,
+    author_id: profile.id,
+    body
+  });
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  return true;
+}
+
+async function addComment(event, ticketId) {
   event.preventDefault();
   const data = new FormData(event.target);
   const body = data.get("comment");
   if (!body.trim()) return;
+
+  const saved = await addRealComment(ticketId, body);
+  if (!saved) return;
+
   state.comments.push({
     ticketId,
     author: statusAuthor(),
@@ -376,6 +588,112 @@ function addComment(event, ticketId) {
   });
   saveState();
   event.target.reset();
+  render();
+}
+
+async function loadRealTickets(options = {}) {
+  const shouldRender = options?.shouldRender !== false;
+
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("tickets")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    alert(error.message);
+    return;
+  }
+
+  state.tickets = data.map((ticket) => ({
+    id: ticket.id,
+    number: ticket.ticket_number,
+    title: ticket.title,
+    customer: "Customer",
+    company: "Company",
+    status: ticket.status,
+    priority: ticket.priority,
+    location: ticket.location_name || "",
+    callback: ticket.wants_callback,
+    version: ticket.version,
+    assignedAgent: ticket.assigned_agent_id || "Unassigned",
+    assignedTechnician: ticket.assigned_technician_id || "Unassigned",
+    createdAt: ticket.created_at
+  }));
+
+  if (state.tickets.length > 0) {
+    state.selectedTicketId = state.tickets[0].id;
+  }
+
+  saveState();
+  if (shouldRender) render();
+}
+
+function subscribeToTicketUpdates() {
+  if (!supabaseClient) return;
+
+  if (ticketChannel) {
+    supabaseClient.removeChannel(ticketChannel);
+  }
+
+  ticketChannel = supabaseClient
+    .channel("ticket-updates")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "tickets" },
+      async () => {
+        await loadRealTickets({ shouldRender: false });
+        render();
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "ticket_comments" },
+      async () => {
+        await loadRealTickets({ shouldRender: false });
+        render();
+      }
+    )
+    .subscribe();
+}
+
+async function updateCompanyLimit(companyId, newLimit) {
+  if (!Number.isInteger(newLimit) || newLimit < 1) {
+    alert("Enter a valid account limit.");
+    return false;
+  }
+
+  if (supabaseClient && isUuid(companyId)) {
+    const { error } = await supabaseClient
+      .from("companies")
+      .update({ account_limit: newLimit })
+      .eq("id", companyId);
+
+    if (error) {
+      alert(error.message);
+      return false;
+    }
+  }
+
+  alert("Company account limit updated.");
+  return true;
+}
+
+async function handleCompanyLimitUpdate() {
+  const company = currentCompany();
+  const input = document.querySelector("#companyLimitInput");
+  const newLimit = Number.parseInt(input.value, 10);
+  const updated = await updateCompanyLimit(company.id, newLimit);
+
+  if (!updated) return;
+
+  company.accountLimit = newLimit;
+  saveState();
   render();
 }
 
@@ -439,6 +757,10 @@ function renderTicketList(tickets = state.tickets) {
 }
 
 function renderTicketDetail(ticket) {
+  if (!ticket) {
+    return `<section class="panel"><div class="empty-state">No ticket selected.</div></section>`;
+  }
+
   const comments = ticketComments(ticket.id);
   return `
     <section class="detail-grid">
@@ -496,6 +818,20 @@ function renderTicketDetail(ticket) {
           <button class="secondary-button" type="button" data-status="resolved" data-ticket="${ticket.id}">Resolved</button>
           <button class="secondary-button" type="button" data-status="closed" data-ticket="${ticket.id}">Closed</button>
         </div>
+
+        <hr />
+
+        <h3>Technician</h3>
+        <div class="field">
+          <label for="technician-${ticket.id}">Assign technician</label>
+          <select id="technician-${ticket.id}" data-technician-select="${ticket.id}">
+            <option value="">Unassigned</option>
+            <option value="Ruwan" ${ticket.assignedTechnician === "Ruwan" ? "selected" : ""}>Ruwan</option>
+            <option value="Sahan" ${ticket.assignedTechnician === "Sahan" ? "selected" : ""}>Sahan</option>
+            <option value="Milan" ${ticket.assignedTechnician === "Milan" ? "selected" : ""}>Milan</option>
+          </select>
+        </div>
+        <button class="primary-button" type="button" data-assign-technician="${ticket.id}">Assign</button>
 
         <hr />
 
@@ -590,6 +926,14 @@ function customerView() {
             <label for="title">Problem</label>
             <input id="title" name="title" placeholder="Example: scanner not reading barcodes" required />
           </div>
+          <div class="field">
+            <label for="photo">Photo</label>
+            <input id="photo" name="photo" type="file" accept="image/png,image/jpeg" />
+          </div>
+          <div class="field">
+            <label for="voice">Voice note</label>
+            <input id="voice" name="voice" type="file" accept="audio/*" />
+          </div>
           <div class="form-grid">
             <div class="field">
               <label for="priority">Priority</label>
@@ -610,8 +954,6 @@ function customerView() {
           </label>
           <div class="action-row">
             <button class="primary-button" type="submit">Submit Ticket</button>
-            <button class="secondary-button" type="button">Attach Photo</button>
-            <button class="secondary-button" type="button">Record Voice</button>
           </div>
         </form>
       </div>
@@ -633,16 +975,14 @@ function agentView() {
       <div class="panel">
         <div class="panel-title">
           <h2>Agent Ticket Queue</h2>
-          <span class="badge badge-muted">Realtime list</span>
+          <button class="secondary-button" type="button" id="loadRealTicketsBtn">Load Supabase Tickets</button>
         </div>
         ${renderTicketList(state.tickets)}
       </div>
       <div class="panel">
         <h2>Agent Rules</h2>
         <p class="muted">Open tickets, review attachments, comment to customer, update status, or assign technician.</p>
-        <div class="notice">
-          Conflict protection is handled in the database with ticket version checks.
-        </div>
+        <div class="notice">Conflict protection is handled in the database with ticket version checks.</div>
       </div>
     </section>
     <br />
@@ -686,6 +1026,8 @@ function technicianView() {
 }
 
 function adminView() {
+  const company = currentCompany();
+
   return `
     ${renderStats()}
     <br />
@@ -717,11 +1059,13 @@ function adminView() {
       <article class="panel">
         <h2>Company Limit</h2>
         <p class="muted">When a company reaches the account limit, admin can increase or reject the request.</p>
-        <div class="notice">
-          Automated Barcode Solutions Pvt Ltd default customer limit: 10 users per company.
+        <div class="notice">${company.name} current customer limit: ${company.accountLimit} users.</div>
+        <div class="field">
+          <label for="companyLimitInput">New account limit</label>
+          <input id="companyLimitInput" type="number" min="1" value="${company.accountLimit}" />
         </div>
         <div class="action-row">
-          <button class="primary-button" type="button">Increase Limit</button>
+          <button class="primary-button" type="button" id="updateCompanyLimitBtn">Update Limit</button>
           <button class="secondary-button" type="button">View Companies</button>
         </div>
       </article>
@@ -771,6 +1115,7 @@ function render() {
     technician: technicianView,
     admin: adminView
   };
+
   app.innerHTML = authPanel() + views[state.role]();
   bindEvents();
 }
@@ -804,6 +1149,14 @@ function bindEvents() {
     button.onclick = () => retryNotification(button.dataset.retry);
   });
 
+  document.querySelectorAll("[data-assign-technician]").forEach((button) => {
+    button.onclick = () => {
+      const ticketId = button.dataset.assignTechnician;
+      const select = document.querySelector(`[data-technician-select="${ticketId}"]`);
+      assignTechnician(ticketId, select ? select.value : "");
+    };
+  });
+
   document.querySelectorAll("[data-map]").forEach((button) => {
     button.onclick = () => {
       const location = button.dataset.map;
@@ -819,10 +1172,6 @@ function bindEvents() {
     form.onsubmit = (event) => addComment(event, form.dataset.commentForm);
   });
 
-  const newTicketForm = document.querySelector("#newTicketForm");
-  if (newTicketForm) {
-    newTicketForm.onsubmit = createTicket;
-  }
   const loginForm = document.querySelector("#loginForm");
   if (loginForm) loginForm.onsubmit = signInUser;
 
@@ -831,7 +1180,22 @@ function bindEvents() {
 
   const signOutBtn = document.querySelector("#signOutBtn");
   if (signOutBtn) signOutBtn.onclick = signOutUser;
+
+  const newTicketForm = document.querySelector("#newTicketForm");
+  if (newTicketForm) newTicketForm.onsubmit = createTicket;
+
+  const loadRealTicketsBtn = document.querySelector("#loadRealTicketsBtn");
+  if (loadRealTicketsBtn) loadRealTicketsBtn.onclick = loadRealTickets;
+
+  const updateCompanyLimitBtn = document.querySelector("#updateCompanyLimitBtn");
+  if (updateCompanyLimitBtn) updateCompanyLimitBtn.onclick = handleCompanyLimitUpdate;
 }
 
 document.querySelector("#resetDemoBtn").addEventListener("click", resetDemo);
-loadCurrentUser().then(render);
+loadCurrentUser().then(async () => {
+  if (currentUser) {
+    subscribeToTicketUpdates();
+    await loadRealTickets({ shouldRender: false });
+  }
+  render();
+});
