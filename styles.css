@@ -17,11 +17,16 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   color: var(--ink);
   font-family: Arial, Helvetica, sans-serif;
   background: var(--wash);
+  overflow-x: hidden;
 }
 
 button,
@@ -33,6 +38,8 @@ textarea {
 
 button {
   cursor: pointer;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .topbar {
@@ -65,6 +72,7 @@ button {
 .topbar-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -78,6 +86,7 @@ button {
   padding: 10px clamp(12px, 4vw, 36px);
   background: rgba(245, 247, 251, 0.94);
   border-bottom: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
@@ -87,6 +96,7 @@ button {
 .danger-button,
 .ghost-button {
   min-height: 42px;
+  min-width: 0;
   padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid transparent;
@@ -161,6 +171,7 @@ button {
 .panel,
 .ticket-card,
 .stat-card {
+  min-width: 0;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -183,6 +194,7 @@ button {
 .panel h3 {
   margin: 0;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .panel h2 {
@@ -199,6 +211,16 @@ button {
 
 .small {
   font-size: 13px;
+}
+
+.muted,
+.small,
+.notice,
+.ticket-card h3,
+.inventory-row strong,
+td,
+th {
+  overflow-wrap: anywhere;
 }
 
 .stat-card {
@@ -220,6 +242,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
+  align-items: start;
   padding: 14px;
 }
 
@@ -287,6 +310,22 @@ button {
   margin-top: 14px;
 }
 
+.action-row input,
+.action-row select {
+  flex: 1 1 220px;
+  min-width: min(220px, 100%);
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.action-row button {
+  flex: 0 0 auto;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -317,7 +356,10 @@ button {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 table {
@@ -399,7 +441,7 @@ th {
   }
 
   .role-nav {
-    top: 116px;
+    top: 126px;
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -416,9 +458,47 @@ th {
 }
 
 @media (max-width: 520px) {
+  .topbar {
+    position: static;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .topbar h1 {
+    font-size: 24px;
+  }
+
+  .role-nav {
+    position: static;
+    grid-template-columns: 1fr 1fr;
+    padding: 8px;
+  }
+
+  .app-shell {
+    padding: 12px;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .topbar-actions,
   .action-row {
     width: 100%;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .badge {
+    max-width: 100%;
   }
 
   .topbar-actions button,
@@ -426,5 +506,37 @@ th {
   .role-nav button {
     width: 100%;
   }
+
+  .action-row input,
+  .action-row select {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .ticket-meta {
+    gap: 6px;
+  }
+
+  .inventory-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-row button {
+    width: 100%;
+  }
 }
 
+@media (max-width: 380px) {
+  .role-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .role-nav button,
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .ghost-button {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
