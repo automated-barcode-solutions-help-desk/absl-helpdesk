@@ -9,96 +9,32 @@ let currentUser = null;
 let currentProfile = null;
 let ticketChannel = null;
 
+const publicRoutes = ["login", "register"];
+const dashboardRoutes = ["customer", "agent", "technician", "admin"];
+const storageKey = "absl-helpdesk-state";
+const legacyStorageKey = "absl-helpdesk-demo";
+
 const initialState = {
   role: "customer",
-  selectedTicketId: "TCK-1001",
+  selectedTicketId: "",
   company: {
-    id: "DEMO-COMPANY",
+    id: "ABSL-COMPANY",
     name: "Automated Barcode Solutions Pvt Ltd",
     domain: "automatedbarcode.net",
     accountLimit: 10
   },
-  tickets: [
-    {
-      id: "TCK-1001",
-      number: "ABSL-2026-000001",
-      title: "Barcode printer ribbon not feeding",
-      customer: "Nimal Perera",
-      company: "Lanka Fresh Mart",
-      status: "new",
-      priority: "High",
-      location: "Colombo 03",
-      callback: true,
-      version: 1,
-      assignedAgent: "Asha",
-      assignedTechnician: "Ruwan",
-      createdAt: "2026-08-21 09:20"
-    },
-    {
-      id: "TCK-1002",
-      number: "ABSL-2026-000002",
-      title: "Scanner not connecting to POS",
-      customer: "Dilani Silva",
-      company: "Metro Pharmacy",
-      status: "in_progress",
-      priority: "Medium",
-      location: "Kandy",
-      callback: false,
-      version: 3,
-      assignedAgent: "Asha",
-      assignedTechnician: "Sahan",
-      createdAt: "2026-08-21 10:05"
-    },
-    {
-      id: "TCK-1003",
-      number: "ABSL-2026-000003",
-      title: "Need new labels for weighing scale",
-      customer: "Fathima Noor",
-      company: "City Grocers",
-      status: "resolved",
-      priority: "Low",
-      location: "",
-      callback: false,
-      version: 2,
-      assignedAgent: "Milan",
-      assignedTechnician: "Ruwan",
-      createdAt: "2026-08-21 11:35"
-    }
-  ],
-  comments: [
-    {
-      ticketId: "TCK-1001",
-      author: "Nimal Perera",
-      body: "The printer starts but the ribbon gets stuck after two labels.",
-      createdAt: "09:23"
-    },
-    {
-      ticketId: "TCK-1001",
-      author: "Asha",
-      body: "Thanks. Please keep the printer powered on. Technician assigned.",
-      createdAt: "09:31"
-    }
-  ],
-  inventory: [
-    { id: "INV-1", sku: "RBN-110-74", name: "Wax ribbon 110mm x 74m", category: "Ribbon", qty: 24 },
-    { id: "INV-2", sku: "LBL-50-25", name: "Label roll 50mm x 25mm", category: "Labels", qty: 8 },
-    { id: "INV-3", sku: "HDR-ZD220", name: "Print head ZD220", category: "Printer Parts", qty: 2 }
-  ],
-  approvals: [
-    { id: "APR-1", name: "Kasun Jayasuriya", email: "kasun@gmail.com", company: "New Retail Shop", status: "pending" },
-    { id: "APR-2", name: "Maya Fernando", email: "maya@metro.lk", company: "Metro Pharmacy", status: "approved" }
-  ],
-  notifications: [
-    { id: "NTF-1", subject: "Ticket created", channel: "email", status: "sent", attempts: 1 },
-    { id: "NTF-2", subject: "Status changed", channel: "email", status: "retry", attempts: 2 },
-    { id: "NTF-3", subject: "Technician assigned", channel: "email", status: "dead_letter", attempts: 5 }
-  ]
+  tickets: [],
+  comments: [],
+  inventory: [],
+  technicians: [],
+  approvals: [],
+  notifications: []
 };
 
 let state = loadState();
 
 function loadState() {
-  const saved = localStorage.getItem("absl-helpdesk-demo");
+  const saved = localStorage.getItem(storageKey) || localStorage.getItem(legacyStorageKey);
   if (!saved) return structuredClone(initialState);
 
   try {
@@ -109,19 +45,94 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem("absl-helpdesk-demo", JSON.stringify(state));
-}
-
-function resetDemo() {
-  state = structuredClone(initialState);
-  saveState();
-  render();
+  localStorage.setItem(storageKey, JSON.stringify(state));
 }
 
 function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || "")
   );
+}
+
+function localId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    };
+    return map[char];
+  });
+}
+
+function normalizePriority(priority) {
+  const value = String(priority || "medium").toLowerCase();
+  if (value === "high") return "High";
+  if (value === "low") return "Low";
+  return "Medium";
+}
+
+function technicianNameById(technicianId) {
+  if (!technicianId || technicianId === "Unassigned") return "Unassigned";
+  const technician = state.technicians.find((item) => item.id === technicianId);
+  return technician?.name || technicianId;
+}
+
+function ticketTechnicianName(ticket) {
+  return technicianNameById(ticket?.assignedTechnicianId || ticket?.assignedTechnician);
+}
+
+async function createRecord(table, values, options = {}) {
+  if (!supabaseClient) return null;
+
+  const { data, error } = await supabaseClient
+    .from(table)
+    .insert(values)
+    .select(options.select || "*")
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return null;
+  }
+
+  return data;
+}
+
+async function updateRecord(table, id, values) {
+  if (!supabaseClient || !isUuid(id)) return true;
+
+  const { error } = await supabaseClient.from(table).update(values).eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  return true;
+}
+
+async function removeRecord(table, id) {
+  if (!supabaseClient || !isUuid(id)) return true;
+
+  const { error } = await supabaseClient.from(table).delete().eq("id", id);
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  return true;
+}
+
+function removeLocalRecord(collectionName, id) {
+  state[collectionName] = state[collectionName].filter((item) => item.id !== id);
 }
 
 function statusLabel(status) {
@@ -156,6 +167,68 @@ function currentCompany() {
     state.company.domain = initialState.company.domain;
   }
   return state.company;
+}
+
+function currentRoute() {
+  const pageName = window.location.pathname.split("/").pop().replace(".html", "");
+  if (publicRoutes.includes(pageName) || dashboardRoutes.includes(pageName)) {
+    return pageName;
+  }
+
+  const route = window.location.hash.replace(/^#\/?/, "");
+  return route || null;
+}
+
+function userRole() {
+  return currentProfile?.role || state.role || "customer";
+}
+
+function dashboardRouteForRole(role = userRole()) {
+  return dashboardRoutes.includes(role) ? role : "customer";
+}
+
+function allowedDashboardRoutes() {
+  if (!currentUser) return [];
+  const role = dashboardRouteForRole();
+  return role === "admin" ? dashboardRoutes : [role];
+}
+
+function canAccessRoute(route) {
+  if (publicRoutes.includes(route)) return true;
+  if (!dashboardRoutes.includes(route) || !currentUser) return false;
+  return allowedDashboardRoutes().includes(route);
+}
+
+function navigateTo(route) {
+  if (currentRoute() === route) {
+    render();
+    return;
+  }
+  window.location.href = `${route}.html`;
+}
+
+function routeLabel(route) {
+  const labels = {
+    login: "Login",
+    register: "Register",
+    customer: "Customer Portal",
+    agent: "Agent Queue",
+    technician: "Technician Jobs",
+    admin: "Admin Console"
+  };
+  return labels[route] || "Page";
+}
+
+function pageHeading(title, description) {
+  return `
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">ABSL Helpdesk</p>
+        <h2>${title}</h2>
+        <p class="muted">${description}</p>
+      </div>
+    </section>
+  `;
 }
 
 async function loadCurrentUser() {
@@ -238,6 +311,7 @@ async function signUpUser(event) {
 
   alert("Registration created. Please verify your email.");
   event.target.reset();
+  navigateTo("login");
 }
 
 async function signInUser(event) {
@@ -263,9 +337,11 @@ async function signInUser(event) {
 
   await loadCurrentUser();
   subscribeToTicketUpdates();
-  await loadRealTickets({ shouldRender: false });
+  await loadRealSupportData({ shouldRender: false });
+  state.role = dashboardRouteForRole();
+  saveState();
   alert("Login successful.");
-  render();
+  navigateTo(state.role);
 }
 
 async function signOutUser() {
@@ -277,13 +353,13 @@ async function signOutUser() {
   await supabaseClient.auth.signOut();
   currentUser = null;
   currentProfile = null;
-  render();
+  navigateTo("login");
 }
 
 function setRole(role) {
   state.role = role;
   saveState();
-  render();
+  navigateTo(role);
 }
 
 function openTicket(ticketId) {
@@ -321,7 +397,7 @@ async function updateTicketStatus(ticketId, status) {
   ticket.status = status;
   ticket.version += 1;
   state.notifications.unshift({
-    id: `NTF-${Date.now()}`,
+    id: localId("NTF"),
     subject: `Ticket ${ticket.number} changed to ${statusLabel(status)}`,
     channel: "email",
     status: "pending",
@@ -332,17 +408,8 @@ async function updateTicketStatus(ticketId, status) {
 }
 
 async function updateApproval(profileId, status) {
-  if (supabaseClient && isUuid(profileId)) {
-    const { error } = await supabaseClient
-      .from("profiles")
-      .update({ approval_status: status })
-      .eq("id", profileId);
-
-    if (error) {
-      alert(error.message);
-      return false;
-    }
-  }
+  const updated = await updateRecord("profiles", profileId, { approval_status: status });
+  if (!updated) return false;
 
   alert(`User ${status}.`);
   return true;
@@ -352,6 +419,22 @@ async function approveUser(approvalId, status) {
   const updated = await updateApproval(approvalId, status);
   if (!updated) return;
 
+  if (supabaseClient && isUuid(approvalId)) {
+    const { error } = await supabaseClient
+      .from("approval_requests")
+      .update({
+        status,
+        reviewed_by: currentProfile?.id || null,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq("profile_id", approvalId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+  }
+
   const approval = state.approvals.find((item) => item.id === approvalId);
   if (approval) approval.status = status;
 
@@ -359,9 +442,19 @@ async function approveUser(approvalId, status) {
   render();
 }
 
-function retryNotification(id) {
+async function retryNotification(id) {
   const notification = state.notifications.find((item) => item.id === id);
   if (!notification) return;
+
+  if (supabaseClient && isUuid(id)) {
+    const updated = await updateRecord("notifications", id, {
+      status: "pending",
+      next_attempt_at: new Date().toISOString(),
+      error_message: null
+    });
+    if (!updated) return;
+  }
+
   notification.status = "pending";
   saveState();
   render();
@@ -371,7 +464,7 @@ async function assignTechnician(ticketId, technicianId) {
   const ticket = state.tickets.find((item) => item.id === ticketId);
   if (!ticket) return;
 
-  const technicianName = technicianId || "Unassigned";
+  const technicianName = technicianNameById(technicianId);
 
   if (supabaseClient && isUuid(ticketId) && isUuid(technicianId)) {
     const { error } = await supabaseClient
@@ -386,7 +479,9 @@ async function assignTechnician(ticketId, technicianId) {
   }
 
   ticket.assignedTechnician = technicianName;
+  ticket.assignedTechnicianId = technicianId || "";
   state.comments.push({
+    id: localId("CMT"),
     ticketId: ticket.id,
     author: "Agent",
     body: `Technician assigned: ${technicianName}.`,
@@ -429,6 +524,7 @@ async function useInventory(itemId) {
 
   item.qty -= 1;
   state.comments.push({
+    id: localId("CMT"),
     ticketId: ticket.id,
     author: "Technician",
     body: `Used 1 item: ${item.name}. Remaining stock: ${item.qty}.`,
@@ -442,25 +538,17 @@ async function createRealTicket(ticket) {
   const profile = await getLoggedInProfile();
   if (!profile) return null;
 
-  const { data, error } = await supabaseClient
-    .from("tickets")
-    .insert({
-      company_id: profile.company_id,
-      created_by: profile.id,
-      title: ticket.title,
-      description: ticket.description || ticket.title,
-      priority: ticket.priority.toLowerCase(),
-      location_name: ticket.location,
-      wants_callback: ticket.callback
-    })
-    .select()
-    .single();
+  const data = await createRecord("tickets", {
+    company_id: profile.company_id,
+    created_by: profile.id,
+    title: ticket.title,
+    description: ticket.description || ticket.title,
+    priority: normalizePriority(ticket.priority).toLowerCase(),
+    location_name: ticket.location,
+    wants_callback: ticket.callback
+  });
 
-  if (error) {
-    alert(error.message);
-    return null;
-  }
-
+  if (!data) return null;
   alert(`Ticket created: ${data.ticket_number}`);
   return data;
 }
@@ -506,18 +594,19 @@ async function createTicket(event) {
   const voiceFile = data.get("voice");
   const nextNumber = String(state.tickets.length + 1).padStart(6, "0");
   const ticket = {
-    id: `TCK-${Date.now()}`,
-    number: `ABSL-2026-${nextNumber}`,
+    id: localId("TCK"),
+    number: `ABSL-${new Date().getFullYear()}-${nextNumber}`,
     title: data.get("title"),
     customer: data.get("customer"),
     company: data.get("company"),
     status: "new",
-    priority: data.get("priority"),
+    priority: normalizePriority(data.get("priority")),
     location: data.get("location"),
     callback: data.get("callback") === "on",
     version: 1,
     assignedAgent: "Unassigned",
     assignedTechnician: "Unassigned",
+    assignedTechnicianId: "",
     createdAt: new Date().toLocaleString()
   };
 
@@ -540,7 +629,7 @@ async function createTicket(event) {
   state.tickets.unshift(ticket);
   state.selectedTicketId = ticket.id;
   state.notifications.unshift({
-    id: `NTF-${Date.now()}`,
+    id: localId("NTF"),
     subject: `New ticket ${ticket.number}`,
     channel: "email",
     status: "pending",
@@ -548,6 +637,57 @@ async function createTicket(event) {
   });
   saveState();
   event.target.reset();
+  render();
+}
+
+async function updateTicketDetails(event, ticketId) {
+  event.preventDefault();
+  const ticket = state.tickets.find((item) => item.id === ticketId);
+  if (!ticket) return;
+
+  const data = new FormData(event.target);
+  const values = {
+    title: String(data.get("title") || "").trim(),
+    priority: normalizePriority(data.get("priority")),
+    location: String(data.get("location") || "").trim(),
+    callback: data.get("callback") === "on"
+  };
+
+  if (!values.title) {
+    alert("Ticket title is required.");
+    return;
+  }
+
+  const updated = await updateRecord("tickets", ticketId, {
+    title: values.title,
+    priority: normalizePriority(values.priority).toLowerCase(),
+    location_name: values.location,
+    wants_callback: values.callback
+  });
+
+  if (!updated) return;
+
+  Object.assign(ticket, values);
+  ticket.version += 1;
+  saveState();
+  render();
+  alert("Ticket updated.");
+}
+
+async function deleteTicket(ticketId) {
+  const ticket = state.tickets.find((item) => item.id === ticketId);
+  if (!ticket) return;
+
+  const confirmed = window.confirm(`Delete ticket ${ticket.number}? This cannot be undone.`);
+  if (!confirmed) return;
+
+  const removed = await removeRecord("tickets", ticketId);
+  if (!removed) return;
+
+  removeLocalRecord("tickets", ticketId);
+  state.comments = state.comments.filter((comment) => comment.ticketId !== ticketId);
+  state.selectedTicketId = state.tickets[0]?.id || "";
+  saveState();
   render();
 }
 
@@ -581,6 +721,7 @@ async function addComment(event, ticketId) {
   if (!saved) return;
 
   state.comments.push({
+    id: localId("CMT"),
     ticketId,
     author: statusAuthor(),
     body,
@@ -588,6 +729,21 @@ async function addComment(event, ticketId) {
   });
   saveState();
   event.target.reset();
+  render();
+}
+
+async function deleteComment(commentId) {
+  const comment = state.comments.find((item) => item.id === commentId);
+  if (!comment) return;
+
+  const confirmed = window.confirm("Delete this comment?");
+  if (!confirmed) return;
+
+  const removed = await removeRecord("ticket_comments", commentId);
+  if (!removed) return;
+
+  removeLocalRecord("comments", commentId);
+  saveState();
   render();
 }
 
@@ -617,18 +773,151 @@ async function loadRealTickets(options = {}) {
     customer: "Customer",
     company: "Company",
     status: ticket.status,
-    priority: ticket.priority,
+    priority: normalizePriority(ticket.priority),
     location: ticket.location_name || "",
     callback: ticket.wants_callback,
     version: ticket.version,
     assignedAgent: ticket.assigned_agent_id || "Unassigned",
-    assignedTechnician: ticket.assigned_technician_id || "Unassigned",
+    assignedTechnician: technicianNameById(ticket.assigned_technician_id),
+    assignedTechnicianId: ticket.assigned_technician_id || "",
     createdAt: ticket.created_at
   }));
 
   if (state.tickets.length > 0) {
     state.selectedTicketId = state.tickets[0].id;
   }
+
+  saveState();
+  if (shouldRender) render();
+}
+
+async function loadRealComments() {
+  if (!supabaseClient) return;
+
+  const { data, error } = await supabaseClient
+    .from("ticket_comments")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  state.comments = (data || []).map((comment) => ({
+    id: comment.id,
+    ticketId: comment.ticket_id,
+    author: comment.author_id === currentProfile?.id ? "You" : "Team member",
+    body: comment.body,
+    createdAt: new Date(comment.created_at).toLocaleString()
+  }));
+}
+
+async function loadRealTechnicians() {
+  if (!supabaseClient) return;
+
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("id, full_name, email")
+    .eq("role", "technician")
+    .eq("approval_status", "approved")
+    .order("full_name", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  state.technicians = (data || []).map((profile) => ({
+    id: profile.id,
+    name: profile.full_name || profile.email
+  }));
+}
+
+async function loadRealInventory() {
+  if (!supabaseClient) return;
+
+  const { data, error } = await supabaseClient
+    .from("inventory_items")
+    .select("id, sku, name, category, quantity_on_hand, reorder_level")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  state.inventory = (data || []).map((item) => ({
+    id: item.id,
+    sku: item.sku,
+    name: item.name,
+    category: item.category,
+    qty: item.quantity_on_hand,
+    reorderLevel: item.reorder_level
+  }));
+}
+
+async function loadRealApprovals() {
+  if (!supabaseClient || userRole() !== "admin") return;
+
+  const { data, error } = await supabaseClient
+    .from("approval_requests")
+    .select("profile_id, company_name, requested_email, status, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  state.approvals = (data || []).map((request) => ({
+    id: request.profile_id,
+    name: request.requested_email,
+    email: request.requested_email,
+    company: request.company_name,
+    status: request.status
+  }));
+}
+
+async function loadRealNotifications() {
+  if (!supabaseClient || userRole() !== "admin") return;
+
+  const { data, error } = await supabaseClient
+    .from("notifications")
+    .select("id, channel, subject, status, attempts, created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  state.notifications = (data || []).map((notification) => ({
+    id: notification.id,
+    subject: notification.subject,
+    channel: notification.channel,
+    status: notification.status,
+    attempts: notification.attempts
+  }));
+}
+
+async function loadRealSupportData(options = {}) {
+  const shouldRender = options?.shouldRender !== false;
+
+  if (!supabaseClient) {
+    if (shouldRender) alert("Supabase is not configured.");
+    return;
+  }
+
+  await loadRealTickets({ shouldRender: false });
+  await Promise.all([
+    loadRealComments(),
+    loadRealTechnicians(),
+    loadRealInventory(),
+    loadRealApprovals(),
+    loadRealNotifications()
+  ]);
 
   saveState();
   if (shouldRender) render();
@@ -647,7 +936,7 @@ function subscribeToTicketUpdates() {
       "postgres_changes",
       { event: "*", schema: "public", table: "tickets" },
       async () => {
-        await loadRealTickets({ shouldRender: false });
+        await loadRealSupportData({ shouldRender: false });
         render();
       }
     )
@@ -655,7 +944,7 @@ function subscribeToTicketUpdates() {
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "ticket_comments" },
       async () => {
-        await loadRealTickets({ shouldRender: false });
+        await loadRealSupportData({ shouldRender: false });
         render();
       }
     )
@@ -668,17 +957,8 @@ async function updateCompanyLimit(companyId, newLimit) {
     return false;
   }
 
-  if (supabaseClient && isUuid(companyId)) {
-    const { error } = await supabaseClient
-      .from("companies")
-      .update({ account_limit: newLimit })
-      .eq("id", companyId);
-
-    if (error) {
-      alert(error.message);
-      return false;
-    }
-  }
+  const updated = await updateRecord("companies", companyId, { account_limit: newLimit });
+  if (!updated) return false;
 
   alert("Company account limit updated.");
   return true;
@@ -731,70 +1011,45 @@ function renderTicketList(tickets = state.tickets) {
     return `<div class="empty-state">No tickets found.</div>`;
   }
 
+  const canDeleteTicket = ["agent", "admin"].includes(state.role);
+
   return `
     <div class="ticket-list">
       ${tickets
-        .map(
-          (ticket) => `
+        .map((ticket) => {
+          const safeId = escapeHtml(ticket.id);
+          const safeTitle = escapeHtml(ticket.title);
+          const safeNumber = escapeHtml(ticket.number);
+          const safePriority = escapeHtml(normalizePriority(ticket.priority));
+          const safeCompany = escapeHtml(ticket.company || "Company");
+          const safeLocation = escapeHtml(ticket.location || "No location provided");
+
+          return `
           <article class="ticket-card">
             <div>
-              <h3>${ticket.title}</h3>
+              <h3>${safeTitle}</h3>
               <div class="ticket-meta">
-                <span class="badge badge-muted">${ticket.number}</span>
+                <span class="badge badge-muted">${safeNumber}</span>
                 ${statusBadge(ticket.status)}
-                <span class="badge badge-muted">${ticket.priority}</span>
+                <span class="badge badge-muted">${safePriority}</span>
                 ${ticket.callback ? `<span class="badge badge-ok">Callback</span>` : ""}
               </div>
-              <p class="small muted">${ticket.company} - ${ticket.location || "No location provided"}</p>
+              <p class="small muted">${safeCompany} - ${safeLocation}</p>
             </div>
-            <button class="secondary-button" type="button" data-open-ticket="${ticket.id}">Open</button>
+            <div class="ticket-card-actions">
+              <button class="secondary-button" type="button" data-open-ticket="${safeId}">Open</button>
+              ${
+                canDeleteTicket
+                  ? `<button class="danger-button" type="button" data-delete-ticket="${safeId}">Delete</button>`
+                  : ""
+              }
+            </div>
           </article>
-        `
-        )
+        `;
+        })
         .join("")}
     </div>
   `;
-}
-
-async function loadRealTickets() {
-  if (!supabaseClient) {
-    alert("Supabase is not configured.");
-    return;
-  }
-
-  const { data, error } = await supabaseClient
-    .from("tickets")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    alert(error.message);
-    return;
-  }
-
-  state.tickets = data.map((ticket) => ({
-    id: ticket.id,
-    number: ticket.ticket_number,
-    title: ticket.title,
-    customer: "Customer",
-    company: "Company",
-    status: ticket.status,
-    priority: ticket.priority,
-    location: ticket.location_name || "",
-    callback: ticket.wants_callback,
-    version: ticket.version,
-    assignedAgent: ticket.assigned_agent_id || "Unassigned",
-    assignedTechnician: ticket.assigned_technician_id || "Unassigned",
-    createdAt: ticket.created_at
-  }));
-
-  if (state.tickets.length > 0) {
-    state.selectedTicketId = state.tickets[0].id;
-  }
-
-  saveState();
-  render();
 }
 
 function renderTicketDetail(ticket) {
@@ -803,48 +1058,106 @@ function renderTicketDetail(ticket) {
   }
 
   const comments = ticketComments(ticket.id);
+  const canDeleteContent = ["agent", "admin"].includes(state.role);
+  const safeTicketId = escapeHtml(ticket.id);
+  const safeTitle = escapeHtml(ticket.title);
+  const safeNumber = escapeHtml(ticket.number);
+  const safeLocation = escapeHtml(ticket.location || "");
+  const safeCustomer = escapeHtml(ticket.customer || "Customer");
+  const safeCompany = escapeHtml(ticket.company || "Company");
+  const priority = normalizePriority(ticket.priority);
+  const selectedTechnicianId =
+    ticket.assignedTechnicianId || state.technicians.find((item) => item.name === ticket.assignedTechnician)?.id || "";
+  const safeAssignedTechnician = escapeHtml(ticketTechnicianName(ticket));
+
   return `
     <section class="detail-grid">
       <article class="panel">
         <div class="panel-title">
           <div>
-            <h2>${ticket.title}</h2>
-            <p class="muted">${ticket.number} - version ${ticket.version}</p>
+            <h2>${safeTitle}</h2>
+            <p class="muted">${safeNumber} - version ${ticket.version}</p>
           </div>
           ${statusBadge(ticket.status)}
         </div>
 
+        <form class="form-grid update-ticket-form" data-ticket-update-form="${safeTicketId}">
+          <div class="field">
+            <label for="edit-title-${safeTicketId}">Update problem</label>
+            <input id="edit-title-${safeTicketId}" name="title" value="${safeTitle}" required />
+          </div>
+          <div class="field">
+            <label for="edit-priority-${safeTicketId}">Priority</label>
+            <select id="edit-priority-${safeTicketId}" name="priority">
+              <option ${priority === "High" ? "selected" : ""}>High</option>
+              <option ${priority === "Medium" ? "selected" : ""}>Medium</option>
+              <option ${priority === "Low" ? "selected" : ""}>Low</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="edit-location-${safeTicketId}">Location</label>
+            <input id="edit-location-${safeTicketId}" name="location" value="${safeLocation}" />
+          </div>
+          <label class="field inline-check">
+            <span>Needs callback</span>
+            <input type="checkbox" name="callback" ${ticket.callback ? "checked" : ""} />
+          </label>
+          <div class="action-row">
+            <button class="primary-button" type="submit">Update Ticket</button>
+            ${
+              canDeleteContent
+                ? `<button class="danger-button" type="button" data-delete-ticket="${safeTicketId}">Delete Ticket</button>`
+                : ""
+            }
+          </div>
+        </form>
+
+        <hr />
+
         <div class="dashboard-grid">
-          <div><strong>Customer</strong><p class="muted">${ticket.customer}</p></div>
-          <div><strong>Company</strong><p class="muted">${ticket.company}</p></div>
-          <div><strong>Location</strong><p class="muted">${ticket.location || "Not provided"}</p></div>
+          <div><strong>Customer</strong><p class="muted">${safeCustomer}</p></div>
+          <div><strong>Company</strong><p class="muted">${safeCompany}</p></div>
+          <div><strong>Location</strong><p class="muted">${safeLocation || "Not provided"}</p></div>
         </div>
 
         <div class="action-row">
-          <button class="secondary-button" type="button" data-map="${ticket.location}">Location</button>
-          <button class="secondary-button" type="button">Photo</button>
-          <button class="secondary-button" type="button">Voice note</button>
-          <button class="secondary-button" type="button">Callback</button>
+          <button class="secondary-button" type="button" data-map-ticket="${safeTicketId}">Location</button>
+          <span class="badge badge-muted">Photos and voice notes are stored with the ticket</span>
+          ${ticket.callback ? `<span class="badge badge-ok">Callback requested</span>` : ""}
         </div>
 
         <hr />
 
         <h3>Comment Thread</h3>
         <div>
-          ${comments
+          ${
+            comments.length
+              ? comments
             .map(
-              (comment) => `
+              (comment) => {
+                const safeCommentId = escapeHtml(comment.id);
+                return `
               <div class="comment">
-                <strong>${comment.author}</strong>
-                <p>${comment.body}</p>
-                <span class="small muted">${comment.createdAt}</span>
+                <div class="comment-header">
+                  <strong>${escapeHtml(comment.author)}</strong>
+                  ${
+                    canDeleteContent && comment.id
+                      ? `<button class="danger-button compact-button" type="button" data-delete-comment="${safeCommentId}">Delete</button>`
+                      : ""
+                  }
+                </div>
+                <p>${escapeHtml(comment.body)}</p>
+                <span class="small muted">${escapeHtml(comment.createdAt)}</span>
               </div>
-            `
+            `;
+              }
             )
-            .join("")}
+            .join("")
+              : `<div class="empty-state">No comments yet.</div>`
+          }
         </div>
 
-        <form class="action-row" data-comment-form="${ticket.id}">
+        <form class="action-row" data-comment-form="${safeTicketId}">
           <input name="comment" aria-label="Comment" placeholder="Write a reply..." />
           <button class="primary-button" type="submit">Send</button>
         </form>
@@ -854,33 +1167,46 @@ function renderTicketDetail(ticket) {
         <h3>Status</h3>
         <p class="muted small">Use the expected version in Supabase to prevent two agents overwriting each other.</p>
         <div class="action-row">
-          <button class="secondary-button" type="button" data-status="new" data-ticket="${ticket.id}">New</button>
-          <button class="secondary-button" type="button" data-status="in_progress" data-ticket="${ticket.id}">In Progress</button>
-          <button class="secondary-button" type="button" data-status="resolved" data-ticket="${ticket.id}">Resolved</button>
-          <button class="secondary-button" type="button" data-status="closed" data-ticket="${ticket.id}">Closed</button>
+          <button class="secondary-button" type="button" data-status="new" data-ticket="${safeTicketId}">New</button>
+          <button class="secondary-button" type="button" data-status="in_progress" data-ticket="${safeTicketId}">In Progress</button>
+          <button class="secondary-button" type="button" data-status="resolved" data-ticket="${safeTicketId}">Resolved</button>
+          <button class="secondary-button" type="button" data-status="closed" data-ticket="${safeTicketId}">Closed</button>
         </div>
 
         <hr />
 
         <h3>Technician</h3>
         <div class="field">
-          <label for="technician-${ticket.id}">Assign technician</label>
-          <select id="technician-${ticket.id}" data-technician-select="${ticket.id}">
+          <label for="technician-${safeTicketId}">Assign technician</label>
+          <select id="technician-${safeTicketId}" data-technician-select="${safeTicketId}">
             <option value="">Unassigned</option>
-            <option value="Ruwan" ${ticket.assignedTechnician === "Ruwan" ? "selected" : ""}>Ruwan</option>
-            <option value="Sahan" ${ticket.assignedTechnician === "Sahan" ? "selected" : ""}>Sahan</option>
-            <option value="Milan" ${ticket.assignedTechnician === "Milan" ? "selected" : ""}>Milan</option>
+            ${state.technicians
+              .map(
+                (technician) => `
+                  <option value="${escapeHtml(technician.id)}" ${
+                    technician.id === selectedTechnicianId ? "selected" : ""
+                  }>${escapeHtml(technician.name)}</option>
+                `
+              )
+              .join("")}
           </select>
+          ${
+            state.technicians.length
+              ? ""
+              : `<p class="small muted">No approved technician profiles found yet.</p>`
+          }
         </div>
-        <button class="primary-button" type="button" data-assign-technician="${ticket.id}">Assign</button>
+        <button class="primary-button" type="button" data-assign-technician="${safeTicketId}" ${
+          state.technicians.length ? "" : "disabled"
+        }>Assign</button>
 
         <hr />
 
         <h3>Timeline</h3>
         <ul class="timeline">
-          <li>Created by ${ticket.customer}</li>
-          <li>Assigned agent: ${ticket.assignedAgent}</li>
-          <li>Assigned technician: ${ticket.assignedTechnician}</li>
+          <li>Created by ${safeCustomer}</li>
+          <li>Assigned agent: ${escapeHtml(ticket.assignedAgent)}</li>
+          <li>Assigned technician: ${safeAssignedTechnician}</li>
           <li>Current status: ${statusLabel(ticket.status)}</li>
         </ul>
       </aside>
@@ -888,26 +1214,13 @@ function renderTicketDetail(ticket) {
   `;
 }
 
-function authPanel() {
-  if (currentUser) {
-    return `
-      <section class="panel">
-        <div class="panel-title">
-          <div>
-            <h2>Signed In</h2>
-            <p class="muted">${currentUser.email}</p>
-          </div>
-          <button class="secondary-button" type="button" id="signOutBtn">Sign Out</button>
-        </div>
-      </section>
-      <br />
-    `;
-  }
-
+function loginPage(message = "") {
   return `
-    <section class="hero-grid">
-      <form class="panel" id="loginForm">
+    <section class="auth-page">
+      <form class="panel auth-card" id="loginForm">
+        <p class="auth-kicker">Secure helpdesk access</p>
         <h2>Login</h2>
+        ${message ? `<div class="notice">${message}</div>` : ""}
         <div class="field">
           <label>Email</label>
           <input name="email" type="email" required />
@@ -917,10 +1230,21 @@ function authPanel() {
           <input name="password" type="password" required />
         </div>
         <button class="primary-button" type="submit">Login</button>
+        <p class="auth-switch">New customer? <a href="register.html">Create an account</a></p>
       </form>
+    </section>
+  `;
+}
 
-      <form class="panel" id="registerForm">
+function registerPage() {
+  const company = currentCompany();
+
+  return `
+    <section class="auth-page">
+      <form class="panel auth-card" id="registerForm">
+        <p class="auth-kicker">Customer onboarding</p>
         <h2>Register</h2>
+        <p class="muted">Company emails ending with @${company.domain} are auto-approved. Personal emails go to admin review.</p>
         <div class="field">
           <label>Full name</label>
           <input name="fullName" required />
@@ -938,13 +1262,28 @@ function authPanel() {
           <input name="password" type="password" minlength="6" required />
         </div>
         <button class="primary-button" type="submit">Create Account</button>
+        <p class="auth-switch">Already registered? <a href="login.html">Login here</a></p>
       </form>
     </section>
-    <br />
+  `;
+}
+
+function pendingApprovalPage() {
+  return `
+    <section class="auth-page">
+      <article class="panel auth-card">
+        <p class="auth-kicker">Account pending</p>
+        <h2>Waiting for admin approval</h2>
+        <p class="muted">Your account exists, but an ABSL admin must approve it before you can open the dashboard.</p>
+        <button class="secondary-button" type="button" id="signOutBtn">Sign Out</button>
+      </article>
+    </section>
   `;
 }
 
 function customerView() {
+  const customerName = currentProfile?.full_name || currentUser?.email || "";
+
   return `
     <section class="hero-grid">
       <div class="panel">
@@ -956,11 +1295,11 @@ function customerView() {
           <div class="form-grid">
             <div class="field">
               <label for="customer">Customer name</label>
-              <input id="customer" name="customer" value="Nimal Perera" required />
+              <input id="customer" name="customer" value="${escapeHtml(customerName)}" placeholder="Your name" required />
             </div>
             <div class="field">
               <label for="company">Company</label>
-              <input id="company" name="company" value="Lanka Fresh Mart" required />
+              <input id="company" name="company" placeholder="Customer company name" required />
             </div>
           </div>
           <div class="field">
@@ -1016,7 +1355,7 @@ function agentView() {
       <div class="panel">
         <div class="panel-title">
           <h2>Agent Ticket Queue</h2>
-          <button class="secondary-button" type="button" id="loadRealTicketsBtn">Load Supabase Tickets</button>
+          <button class="secondary-button" type="button" id="loadRealTicketsBtn">Refresh Tickets</button>
         </div>
         ${renderTicketList(state.tickets)}
       </div>
@@ -1032,7 +1371,9 @@ function agentView() {
 }
 
 function technicianView() {
-  const assigned = state.tickets.filter((ticket) => ticket.assignedTechnician !== "Unassigned");
+  const assigned = state.tickets.filter(
+    (ticket) => ticket.assignedTechnicianId || ticket.assignedTechnician !== "Unassigned"
+  );
   return `
     ${renderStats()}
     <br />
@@ -1046,19 +1387,25 @@ function technicianView() {
       </div>
       <div class="panel">
         <h2>Parts Inventory</h2>
-        ${state.inventory
-          .map(
-            (item) => `
+        ${
+          state.inventory.length
+            ? state.inventory
+                .map(
+                  (item) => `
             <div class="inventory-row">
               <div>
-                <strong>${item.name}</strong>
-                <p class="small muted">${item.sku} - ${item.category} - Stock: ${item.qty}</p>
+                <strong>${escapeHtml(item.name)}</strong>
+                <p class="small muted">${escapeHtml(item.sku)} - ${escapeHtml(item.category)} - Stock: ${item.qty}</p>
               </div>
-              <button class="primary-button" type="button" data-use-part="${item.id}" ${item.qty <= 0 ? "disabled" : ""}>Work</button>
+              <button class="primary-button" type="button" data-use-part="${escapeHtml(item.id)}" ${
+                    item.qty <= 0 ? "disabled" : ""
+                  }>Work</button>
             </div>
           `
-          )
-          .join("")}
+                )
+                .join("")
+            : `<div class="empty-state">No inventory items found. Add inventory in Supabase before using parts.</div>`
+        }
       </div>
     </section>
     <br />
@@ -1078,23 +1425,27 @@ function adminView() {
           <h2>User Approvals</h2>
           <span class="badge badge-muted">Personal email review</span>
         </div>
-        ${state.approvals
-          .map(
-            (approval) => `
+        ${
+          state.approvals.length
+            ? state.approvals
+                .map(
+                  (approval) => `
             <div class="inventory-row">
               <div>
-                <strong>${approval.name}</strong>
-                <p class="small muted">${approval.email} - ${approval.company}</p>
+                <strong>${escapeHtml(approval.name)}</strong>
+                <p class="small muted">${escapeHtml(approval.email)} - ${escapeHtml(approval.company)}</p>
                 <span class="badge ${approval.status === "approved" ? "badge-ok" : "badge-muted"}">${approval.status}</span>
               </div>
               <div class="action-row">
-                <button class="primary-button" type="button" data-approve="${approval.id}">Approve</button>
-                <button class="danger-button" type="button" data-reject="${approval.id}">Reject</button>
+                <button class="primary-button" type="button" data-approve="${escapeHtml(approval.id)}">Approve</button>
+                <button class="danger-button" type="button" data-reject="${escapeHtml(approval.id)}">Reject</button>
               </div>
             </div>
           `
-          )
-          .join("")}
+                )
+                .join("")
+            : `<div class="empty-state">No approval requests are waiting.</div>`
+        }
       </article>
 
       <article class="panel">
@@ -1107,26 +1458,29 @@ function adminView() {
         </div>
         <div class="action-row">
           <button class="primary-button" type="button" id="updateCompanyLimitBtn">Update Limit</button>
-          <button class="secondary-button" type="button">View Companies</button>
         </div>
       </article>
 
       <article class="panel">
         <h2>Notifications</h2>
-        ${state.notifications
-          .map(
-            (notification) => `
+        ${
+          state.notifications.length
+            ? state.notifications
+                .map(
+                  (notification) => `
             <div class="inventory-row">
               <div>
-                <strong>${notification.subject}</strong>
-                <p class="small muted">${notification.channel} - attempts: ${notification.attempts}</p>
+                <strong>${escapeHtml(notification.subject)}</strong>
+                <p class="small muted">${escapeHtml(notification.channel)} - attempts: ${notification.attempts}</p>
                 <span class="badge ${notification.status === "dead_letter" ? "badge-danger" : "badge-muted"}">${notification.status}</span>
               </div>
-              <button class="secondary-button" type="button" data-retry="${notification.id}">Retry</button>
+              <button class="secondary-button" type="button" data-retry="${escapeHtml(notification.id)}">Retry</button>
             </div>
           `
-          )
-          .join("")}
+                )
+                .join("")
+            : `<div class="empty-state">No notifications are queued.</div>`
+        }
       </article>
     </section>
     <br />
@@ -1143,31 +1497,125 @@ function adminView() {
 function render() {
   const app = document.querySelector("#app");
   const badge = document.querySelector("#connectionBadge");
-  badge.textContent = supabaseClient ? "Supabase configured" : "Demo mode";
+  badge.textContent = supabaseClient ? "Connected" : "Supabase not connected";
   badge.className = supabaseClient ? "badge badge-ok" : "badge badge-muted";
 
-  document.querySelectorAll("[data-role]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.role === state.role);
-  });
-
   const views = {
-    customer: customerView,
-    agent: agentView,
-    technician: technicianView,
-    admin: adminView
+    customer: {
+      title: "Customer Portal",
+      description: "Create support tickets, attach photos or voice notes, request callback support, and follow updates.",
+      render: customerView
+    },
+    agent: {
+      title: "Agent Queue",
+      description: "Review incoming tickets, reply to customers, assign technicians, and update ticket progress.",
+      render: agentView
+    },
+    technician: {
+      title: "Technician Jobs",
+      description: "Open assigned field jobs, consume inventory with the Work button, and keep job notes up to date.",
+      render: technicianView
+    },
+    admin: {
+      title: "Admin Console",
+      description: "Approve users, manage company account limits, monitor notifications, and keep the platform healthy.",
+      render: adminView
+    }
   };
 
-  app.innerHTML = authPanel() + views[state.role]();
+  const route = currentRoute() || (currentUser ? dashboardRouteForRole() : "login");
+  updateNavigation(route);
+
+  if (!currentRoute()) {
+    navigateTo(route);
+    return;
+  }
+
+  if (currentUser && publicRoutes.includes(route)) {
+    navigateTo(dashboardRouteForRole());
+    return;
+  }
+
+  if (route === "login") {
+    app.innerHTML = loginPage();
+    bindEvents();
+    return;
+  }
+
+  if (route === "register") {
+    app.innerHTML = registerPage();
+    bindEvents();
+    return;
+  }
+
+  if (!dashboardRoutes.includes(route)) {
+    app.innerHTML = loginPage("This page was not found. Please login to continue.");
+    bindEvents();
+    return;
+  }
+
+  if (!currentUser) {
+    app.innerHTML = loginPage(`Please login before opening the ${routeLabel(route)}.`);
+    bindEvents();
+    return;
+  }
+
+  if (currentProfile?.approval_status && currentProfile.approval_status !== "approved") {
+    app.innerHTML = pendingApprovalPage();
+    bindEvents();
+    return;
+  }
+
+  if (!canAccessRoute(route)) {
+    navigateTo(dashboardRouteForRole());
+    return;
+  }
+
+  state.role = route;
+  saveState();
+  app.innerHTML = pageHeading(views[route].title, views[route].description) + views[route].render();
   bindEvents();
 }
 
+function updateNavigation(route) {
+  const appNav = document.querySelector("#appNav");
+  const publicLinks = document.querySelectorAll(".public-link");
+  const signOutBtnGlobal = document.querySelector("#signOutBtnGlobal");
+  const allowedRoutes = allowedDashboardRoutes();
+  const isLoggedIn = Boolean(currentUser);
+
+  if (appNav) appNav.hidden = !isLoggedIn;
+  if (signOutBtnGlobal) signOutBtnGlobal.hidden = !isLoggedIn;
+  publicLinks.forEach((link) => {
+    link.hidden = isLoggedIn;
+  });
+
+  document.querySelectorAll("[data-route]").forEach((link) => {
+    const linkRoute = link.dataset.route;
+    link.hidden = isLoggedIn && !allowedRoutes.includes(linkRoute);
+    link.classList.toggle("is-active", linkRoute === route);
+  });
+}
+
 function bindEvents() {
-  document.querySelectorAll("[data-role]").forEach((button) => {
-    button.onclick = () => setRole(button.dataset.role);
+  document.querySelectorAll("[data-route]").forEach((link) => {
+    link.onclick = () => setRole(link.dataset.route);
   });
 
   document.querySelectorAll("[data-open-ticket]").forEach((button) => {
     button.onclick = () => openTicket(button.dataset.openTicket);
+  });
+
+  document.querySelectorAll("[data-ticket-update-form]").forEach((form) => {
+    form.onsubmit = (event) => updateTicketDetails(event, form.dataset.ticketUpdateForm);
+  });
+
+  document.querySelectorAll("[data-delete-ticket]").forEach((button) => {
+    button.onclick = () => deleteTicket(button.dataset.deleteTicket);
+  });
+
+  document.querySelectorAll("[data-delete-comment]").forEach((button) => {
+    button.onclick = () => deleteComment(button.dataset.deleteComment);
   });
 
   document.querySelectorAll("[data-status]").forEach((button) => {
@@ -1209,6 +1657,17 @@ function bindEvents() {
     };
   });
 
+  document.querySelectorAll("[data-map-ticket]").forEach((button) => {
+    button.onclick = () => {
+      const ticket = state.tickets.find((item) => item.id === button.dataset.mapTicket);
+      if (!ticket?.location) {
+        alert("No location was provided for this ticket.");
+        return;
+      }
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticket.location)}`, "_blank");
+    };
+  });
+
   document.querySelectorAll("[data-comment-form]").forEach((form) => {
     form.onsubmit = (event) => addComment(event, form.dataset.commentForm);
   });
@@ -1222,21 +1681,25 @@ function bindEvents() {
   const signOutBtn = document.querySelector("#signOutBtn");
   if (signOutBtn) signOutBtn.onclick = signOutUser;
 
+  const signOutBtnGlobal = document.querySelector("#signOutBtnGlobal");
+  if (signOutBtnGlobal) signOutBtnGlobal.onclick = signOutUser;
+
   const newTicketForm = document.querySelector("#newTicketForm");
   if (newTicketForm) newTicketForm.onsubmit = createTicket;
 
   const loadRealTicketsBtn = document.querySelector("#loadRealTicketsBtn");
-  if (loadRealTicketsBtn) loadRealTicketsBtn.onclick = loadRealTickets;
+  if (loadRealTicketsBtn) loadRealTicketsBtn.onclick = loadRealSupportData;
 
   const updateCompanyLimitBtn = document.querySelector("#updateCompanyLimitBtn");
   if (updateCompanyLimitBtn) updateCompanyLimitBtn.onclick = handleCompanyLimitUpdate;
 }
 
-document.querySelector("#resetDemoBtn").addEventListener("click", resetDemo);
+window.addEventListener("hashchange", render);
+
 loadCurrentUser().then(async () => {
   if (currentUser) {
     subscribeToTicketUpdates();
-    await loadRealTickets({ shouldRender: false });
+    await loadRealSupportData({ shouldRender: false });
   }
   render();
 });

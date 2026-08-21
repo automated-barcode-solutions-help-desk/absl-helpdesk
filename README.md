@@ -1,7 +1,7 @@
-# ABSL Helpdesk Starter
+# ABSL Helpdesk
 
-This is a mobile-responsive starter for Automated Barcode Solutions Pvt Ltd.
-It follows the uploaded sequence diagrams as requirements:
+This is a mobile-responsive helpdesk web app for Automated Barcode Solutions Pvt Ltd.
+It follows the uploaded sequence diagrams as project requirements:
 
 - customer registration and approval
 - role dashboards for customer, agent, technician, and admin
@@ -12,11 +12,11 @@ It follows the uploaded sequence diagrams as requirements:
 - notification queue, retry, and dead-letter handling
 - inventory CSV cleanup and migration
 
-## 1. Open the App First
+## 1. Open The App
 
-Open `index.html` in a browser. It runs in demo mode immediately.
+Open `index.html` in a browser after Supabase is configured.
 
-Edit `config.js` only after Supabase is ready:
+Edit `config.js` with the Supabase project URL and anon public key:
 
 ```js
 window.ABSL_SUPABASE = {
@@ -126,7 +126,7 @@ Initialize the project:
 ```bash
 git init
 git add .
-git commit -m "Initial ABSL helpdesk starter"
+git commit -m "Initial ABSL helpdesk"
 ```
 
 Create GitHub repository, then:
@@ -154,6 +154,14 @@ After every completed feature:
 git add .
 git commit -m "Describe the completed feature"
 git push
+```
+
+For the current company-ready page and CRUD update branch:
+
+```bash
+git add index.html login.html register.html customer.html agent.html technician.html admin.html app.js styles.css README.md
+git commit -m "Make helpdesk production ready with separate pages and CRUD actions"
+git push -u origin feature/separate-web-pages
 ```
 
 ## 8. Suggested Build Order
