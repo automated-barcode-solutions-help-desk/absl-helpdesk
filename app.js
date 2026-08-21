@@ -136,9 +136,36 @@ function openTicket(ticketId) {
   render();
 }
 
-function updateTicketStatus(ticketId, status) {
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function changeRealTicketStatus(ticketId, newStatus, expectedVersion) {
+  if (!supabaseClient) return false;
+
+  const { error } = await supabaseClient.rpc("change_ticket_status", {
+    p_ticket_id: ticketId,
+    p_new_status: newStatus,
+    p_expected_version: expectedVersion
+  });
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  return true;
+}
+
+async function updateTicketStatus(ticketId, status) {
   const ticket = state.tickets.find((item) => item.id === ticketId);
   if (!ticket) return;
+
+  if (supabaseClient && isUuid(ticket.id)) {
+    const ok = await changeRealTicketStatus(ticket.id, status, ticket.version);
+    if (!ok) return;
+  }
+
   ticket.status = status;
   ticket.version += 1;
   state.notifications.unshift({
