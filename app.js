@@ -292,6 +292,7 @@ async function signUpUser(event) {
   const password = form.get("password");
   const fullName = form.get("fullName");
   const companyName = form.get("companyName");
+  const requestedRole = form.get("requestedRole") || "customer";
 
   const { error } = await supabaseClient.auth.signUp({
     email,
@@ -299,7 +300,8 @@ async function signUpUser(event) {
     options: {
       data: {
         full_name: fullName,
-        company_name: companyName
+        company_name: companyName,
+        requested_role: requestedRole
       }
     }
   });
@@ -309,7 +311,7 @@ async function signUpUser(event) {
     return;
   }
 
-  alert("Registration created. Please verify your email.");
+  alert("Registration created. Please verify your email. Staff and admin accounts may need approval.");
   event.target.reset();
   navigateTo("login");
 }
@@ -862,7 +864,7 @@ async function loadRealApprovals() {
 
   const { data, error } = await supabaseClient
     .from("approval_requests")
-    .select("profile_id, company_name, requested_email, status, created_at")
+    .select("profile_id, company_name, requested_email, requested_role, status, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -875,6 +877,7 @@ async function loadRealApprovals() {
     name: request.requested_email,
     email: request.requested_email,
     company: request.company_name,
+    role: request.requested_role || "customer",
     status: request.status
   }));
 }
@@ -1237,14 +1240,12 @@ function loginPage(message = "") {
 }
 
 function registerPage() {
-  const company = currentCompany();
-
   return `
     <section class="auth-page">
       <form class="panel auth-card" id="registerForm">
-        <p class="auth-kicker">Customer onboarding</p>
+        <p class="auth-kicker">Account onboarding</p>
         <h2>Register</h2>
-        <p class="muted">Company emails ending with @${company.domain} are auto-approved. Personal emails go to admin review.</p>
+        <p class="muted">Any email can register. Your dashboard is selected from your approved account position.</p>
         <div class="field">
           <label>Full name</label>
           <input name="fullName" required />
@@ -1256,6 +1257,16 @@ function registerPage() {
         <div class="field">
           <label>Email</label>
           <input name="email" type="email" required />
+        </div>
+        <div class="field">
+          <label>Position</label>
+          <select name="requestedRole" required>
+            <option value="customer">Customer</option>
+            <option value="technician">Technician</option>
+            <option value="agent">Agent</option>
+            <option value="admin">Admin</option>
+          </select>
+          <p class="small muted">Customer accounts can use the customer portal. Staff and admin roles should be approved by ABSL.</p>
         </div>
         <div class="field">
           <label>Password</label>
@@ -1434,6 +1445,7 @@ function adminView() {
               <div>
                 <strong>${escapeHtml(approval.name)}</strong>
                 <p class="small muted">${escapeHtml(approval.email)} - ${escapeHtml(approval.company)}</p>
+                <p class="small muted">Requested position: ${escapeHtml(statusLabel(approval.role || "customer"))}</p>
                 <span class="badge ${approval.status === "approved" ? "badge-ok" : "badge-muted"}">${approval.status}</span>
               </div>
               <div class="action-row">

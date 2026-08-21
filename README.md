@@ -61,6 +61,22 @@ The app has four role dashboards:
 - Technician: view assigned jobs, press Work button, consume inventory
 - Admin: approve/reject users, increase company limits, retry notifications
 
+Registration supports all email addresses. Customers are approved automatically.
+Agent, technician, and admin requests are routed by the role stored in
+`profiles.role`; staff/admin accounts should be approved by ABSL.
+
+To create the first admin, run this once in Supabase SQL Editor after that user
+registers:
+
+```sql
+update public.profiles
+set role = 'admin',
+    approval_status = 'approved'
+where email = 'your-admin-email@example.com';
+```
+
+Replace `your-admin-email@example.com` with the real admin email.
+
 ## 4. Important Supabase Functions
 
 The migration includes:
@@ -159,7 +175,7 @@ git push
 For the current company-ready page and CRUD update branch:
 
 ```bash
-git add index.html login.html register.html customer.html agent.html technician.html admin.html app.js styles.css README.md
+git add index.html login.html register.html customer.html agent.html technician.html admin.html app.js styles.css README.md supabase/migrations/0002_role_based_registration.sql
 git commit -m "Make helpdesk production ready with separate pages and CRUD actions"
 git push -u origin feature/separate-web-pages
 ```
