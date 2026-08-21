@@ -168,11 +168,39 @@ function retryNotification(id) {
   render();
 }
 
-function useInventory(itemId) {
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function consumeRealInventory(ticketId, inventoryItemId, quantity) {
+  if (!supabaseClient) return false;
+
+  const { error } = await supabaseClient.rpc("consume_inventory", {
+    p_ticket_id: ticketId,
+    p_inventory_item_id: inventoryItemId,
+    p_quantity: quantity
+  });
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  alert("Inventory used successfully.");
+  return true;
+}
+
+async function useInventory(itemId) {
   const item = state.inventory.find((part) => part.id === itemId);
   if (!item || item.qty <= 0) return;
-  item.qty -= 1;
   const ticket = selectedTicket();
+
+  if (supabaseClient && isUuid(ticket.id) && isUuid(itemId)) {
+    const ok = await consumeRealInventory(ticket.id, itemId, 1);
+    if (!ok) return;
+  }
+
+  item.qty -= 1;
   state.comments.push({
     ticketId: ticket.id,
     author: "Technician",
