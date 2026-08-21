@@ -1,9 +1,12 @@
+// @ts-nocheck
+/// <reference lib="deno.ns" />
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const resendApiKey = Deno.env.get("RESEND_API_KEY")!;
-const fromEmail = Deno.env.get("FROM_EMAIL") || "helpdesk@your-domain.com";
+const fromEmail = Deno.env.get("FROM_EMAIL") || "helpdesk@automatedbarcode.net";
 
 const admin = createClient(supabaseUrl, serviceRoleKey);
 
