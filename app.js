@@ -183,7 +183,59 @@ function useInventory(itemId) {
   render();
 }
 
-function createTicket(event) {
+async function createRealTicket(ticket) {
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return null;
+  }
+
+  const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+
+  if (userError || !userData.user) {
+    alert("Please login first.");
+    return null;
+  }
+
+  const { data: profile, error: profileError } = await supabaseClient
+    .from("profiles")
+    .select("id, company_id, approval_status")
+    .eq("id", userData.user.id)
+    .single();
+
+  if (profileError || !profile) {
+    alert("Profile not found. Please register first.");
+    return null;
+  }
+
+  if (profile.approval_status !== "approved") {
+    alert("Your account is waiting for admin approval.");
+    return null;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("tickets")
+    .insert({
+      company_id: profile.company_id,
+      created_by: profile.id,
+      title: ticket.title,
+      description: ticket.description || ticket.title,
+      priority: ticket.priority.toLowerCase(),
+      location_name: ticket.location,
+      wants_callback: ticket.callback
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return null;
+  }
+
+  alert(`Ticket created: ${data.ticket_number}`);
+  return data;
+}
+
+async function createTicket(event) {
   event.preventDefault();
   const data = new FormData(event.target);
   const nextNumber = String(state.tickets.length + 1).padStart(6, "0");
@@ -202,6 +254,11 @@ function createTicket(event) {
     assignedTechnician: "Unassigned",
     createdAt: new Date().toLocaleString()
   };
+
+  if (supabaseClient) {
+    await createRealTicket(ticket);
+  }
+
   state.tickets.unshift(ticket);
   state.selectedTicketId = ticket.id;
   state.notifications.unshift({
