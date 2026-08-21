@@ -8,6 +8,11 @@ const supabaseClient =
 const initialState = {
   role: "customer",
   selectedTicketId: "TCK-1001",
+  company: {
+    id: "DEMO-COMPANY",
+    name: "Automated Barcode Solutions Pvt Ltd",
+    accountLimit: 10
+  },
   tickets: [
     {
       id: "TCK-1001",
@@ -164,6 +169,59 @@ function retryNotification(id) {
   const notification = state.notifications.find((item) => item.id === id);
   if (!notification) return;
   notification.status = "pending";
+  saveState();
+  render();
+}
+
+function currentCompany() {
+  if (!state.company) {
+    state.company = {
+      id: "DEMO-COMPANY",
+      name: "Automated Barcode Solutions Pvt Ltd",
+      accountLimit: 10
+    };
+  }
+
+  return state.company;
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function updateCompanyLimit(companyId, newLimit) {
+  if (!Number.isInteger(newLimit) || newLimit < 1) {
+    alert("Enter a valid account limit.");
+    return false;
+  }
+
+  if (supabaseClient && isUuid(companyId)) {
+    const { error } = await supabaseClient
+      .from("companies")
+      .update({ account_limit: newLimit })
+      .eq("id", companyId);
+
+    if (error) {
+      alert(error.message);
+      return false;
+    }
+  }
+
+  alert("Company account limit updated.");
+  return true;
+}
+
+async function handleCompanyLimitUpdate() {
+  const company = currentCompany();
+  const input = document.querySelector("#companyLimitInput");
+  const newLimit = Number.parseInt(input.value, 10);
+  const updated = await updateCompanyLimit(company.id, newLimit);
+
+  if (!updated) {
+    return;
+  }
+
+  company.accountLimit = newLimit;
   saveState();
   render();
 }
@@ -483,6 +541,8 @@ function technicianView() {
 }
 
 function adminView() {
+  const company = currentCompany();
+
   return `
     ${renderStats()}
     <br />
@@ -515,10 +575,14 @@ function adminView() {
         <h2>Company Limit</h2>
         <p class="muted">When a company reaches the account limit, admin can increase or reject the request.</p>
         <div class="notice">
-          Automated Barcode Solutions Pvt Ltd default customer limit: 10 users per company.
+          ${company.name} current customer limit: ${company.accountLimit} users.
+        </div>
+        <div class="field">
+          <label for="companyLimitInput">New account limit</label>
+          <input id="companyLimitInput" type="number" min="1" value="${company.accountLimit}" />
         </div>
         <div class="action-row">
-          <button class="primary-button" type="button">Increase Limit</button>
+          <button class="primary-button" type="button" id="updateCompanyLimitBtn">Update Limit</button>
           <button class="secondary-button" type="button">View Companies</button>
         </div>
       </article>
@@ -619,6 +683,11 @@ function bindEvents() {
   const newTicketForm = document.querySelector("#newTicketForm");
   if (newTicketForm) {
     newTicketForm.onsubmit = createTicket;
+  }
+
+  const updateCompanyLimitBtn = document.querySelector("#updateCompanyLimitBtn");
+  if (updateCompanyLimitBtn) {
+    updateCompanyLimitBtn.onclick = handleCompanyLimitUpdate;
   }
 }
 
