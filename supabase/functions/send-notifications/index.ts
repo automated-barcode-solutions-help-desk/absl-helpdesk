@@ -89,4 +89,3 @@ Deno.serve(async () => {
 
   return Response.json({ ok: true, processed: results.length, results });
 });
-

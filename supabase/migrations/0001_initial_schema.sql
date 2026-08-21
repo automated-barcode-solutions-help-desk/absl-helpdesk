@@ -593,10 +593,17 @@ insert into public.companies (name, account_limit, status)
 values ('Automated Barcode Solutions Pvt Ltd', 25, 'active')
 on conflict (name) do nothing;
 
+insert into public.company_domains (company_id, domain, auto_approve)
+select id, 'automatedbarcode.net', true
+from public.companies
+where name = 'Automated Barcode Solutions Pvt Ltd'
+on conflict (domain) do update
+set company_id = excluded.company_id,
+    auto_approve = excluded.auto_approve;
+
 insert into public.inventory_items (sku, name, category, quantity_on_hand, reorder_level, unit_cost)
 values
   ('RBN-110-74', 'Wax ribbon 110mm x 74m', 'Ribbon', 24, 5, 1800.00),
   ('LBL-50-25', 'Label roll 50mm x 25mm', 'Labels', 8, 5, 950.00),
   ('HDR-ZD220', 'Print head ZD220', 'Printer Parts', 2, 2, 18500.00)
 on conflict (sku) do nothing;
-
