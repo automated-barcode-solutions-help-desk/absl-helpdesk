@@ -152,7 +152,36 @@ function updateTicketStatus(ticketId, status) {
   render();
 }
 
-function approveUser(approvalId, status) {
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function updateApproval(profileId, status) {
+  if (!supabaseClient || !isUuid(profileId)) {
+    return true;
+  }
+
+  const { error } = await supabaseClient
+    .from("profiles")
+    .update({ approval_status: status })
+    .eq("id", profileId);
+
+  if (error) {
+    alert(error.message);
+    return false;
+  }
+
+  alert(`User ${status}.`);
+  return true;
+}
+
+async function approveUser(approvalId, status) {
+  const updated = await updateApproval(approvalId, status);
+
+  if (!updated) {
+    return;
+  }
+
   const approval = state.approvals.find((item) => item.id === approvalId);
   if (!approval) return;
   approval.status = status;
