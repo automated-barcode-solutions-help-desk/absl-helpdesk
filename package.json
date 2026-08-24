@@ -4,6 +4,8 @@
   "description": "This is a mobile-responsive starter for Automated Barcode Solutions Pvt Ltd.\r It follows the uploaded sequence diagrams as requirements:",
   "main": "app.js",
   "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
