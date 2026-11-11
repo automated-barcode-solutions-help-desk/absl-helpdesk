@@ -5891,7 +5891,15 @@ function mapPin(label, kind) {
 }
 
 // --- Trip Planner -------------------------------------------------------
+let matrixUi = {
+  search: "",
+  filter: "all", // "all" | "pending" | "multi" | "four" | "major"
+  selectedClients: [],
+  density: "compact" // "compact" | "detailed"
+};
+
 let tripUi = {
+  view: "matrix", // "matrix" | "route"
   start: "base",
   gps: null,
   gpsError: "",
@@ -5912,10 +5920,18 @@ let tripUi = {
 // trip-planner.html#ticket=<id> (from a ticket's "Plan a trip") starts
 // with that job as the destination.
 function prepareTripPlanner() {
-  const match = window.location.hash.match(/ticket=([0-9a-f-]{36})/i);
+  const hash = window.location.hash || "";
+  const match = hash.match(/ticket=([0-9a-f-]{36})/i);
   if (match && isUuid(match[1])) {
     tripUi.dest = `ticket:${match[1]}`;
+    tripUi.view = "route";
     history.replaceState(null, "", window.location.pathname);
+    return;
+  }
+  if (hash === "#route" || tripUi.dest) {
+    tripUi.view = "route";
+  } else if (hash === "#matrix") {
+    tripUi.view = "matrix";
   }
 }
 
@@ -6040,8 +6056,250 @@ function tripSuggestionList(rows, pickedIds) {
     .join("")}</ul>`;
 }
 
+
+function renderLocationMatrix() {
+  const matrixData = buildLocationMatrix(state.clientSites, state.plannedServices);
+  const filtered = filterLocationMatrix(matrixData, {
+    search: matrixUi.search,
+    filter: matrixUi.filter,
+    selectedClients: matrixUi.selectedClients
+  });
+
+  const stats = matrixData.stats;
+
+  const statCards = `
+    <section class="dashboard-grid stats-grid matrix-stats-grid">
+      <article class="stat-card">
+        <span>Total Towns</span>
+        <strong>${stats.totalTowns}</strong>
+        <small class="muted">Indexed 1 to ${stats.totalTowns} (A–Z)</small>
+      </article>
+      <article class="stat-card">
+        <span>Active Sites</span>
+        <strong>${stats.totalSites}</strong>
+        <small class="muted">Across all clients</small>
+      </article>
+      <article class="stat-card">
+        <span>Multi-Client Hubs</span>
+        <strong style="color: #0284c7;">${stats.multiClientTowns}</strong>
+        <small class="muted">2+ Companies present</small>
+      </article>
+      <article class="stat-card">
+        <span>4-Client Mega Hubs</span>
+        <strong style="color: #7c3aed;">${stats.fourClientHubs}</strong>
+        <small class="muted">Ampara, Anuradhapura, Kegalle, Mannar, Nuwara Eliya</small>
+      </article>
+      <article class="stat-card">
+        <span>Work Due</span>
+        <strong style="color: #dc2626;">${stats.townsWithPending}</strong>
+        <small class="muted">Towns with pending services</small>
+      </article>
+    </section>
+  `;
+
+  const toolbar = `
+    <article class="panel matrix-toolbar print-hide">
+      <div class="matrix-filter-row">
+        <div class="matrix-search-wrap">
+          <span class="matrix-search-icon">🔍</span>
+          <input type="search" id="matrixSearchInput" class="matrix-search-input"
+                 placeholder="Search town, branch name, contact, phone, or service call..."
+                 value="${escapeHtml(matrixUi.search)}" />
+          ${matrixUi.search ? `<button type="button" id="matrixClearSearch" class="matrix-search-clear" title="Clear search">✕</button>` : ""}
+        </div>
+        <div class="matrix-view-toggle">
+          <button type="button" class="matrix-density-btn ${matrixUi.density === "compact" ? "is-active" : ""}" data-matrix-density="compact" title="High-density matrix table">Compact</button>
+          <button type="button" class="matrix-density-btn ${matrixUi.density === "detailed" ? "is-active" : ""}" data-matrix-density="detailed" title="Detailed cards with contact info">Detailed</button>
+          <button type="button" class="secondary-button compact-button" id="matrixPrintBtn" title="Print matrix sheet">🖨️ Print Sheet</button>
+        </div>
+      </div>
+
+      <div class="matrix-pills-row">
+        <span class="matrix-pills-label">Filter:</span>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "all" ? "is-active" : ""}" data-matrix-filter="all">All Towns (${stats.totalTowns})</button>
+        <button type="button" class="matrix-pill matrix-pill-danger ${matrixUi.filter === "pending" ? "is-active" : ""}" data-matrix-filter="pending">🔴 Work Due (${stats.townsWithPending})</button>
+        <button type="button" class="matrix-pill matrix-pill-hub ${matrixUi.filter === "multi" ? "is-active" : ""}" data-matrix-filter="multi">⭐ Multi-Client Hubs (${stats.multiClientTowns})</button>
+        <button type="button" class="matrix-pill matrix-pill-mega ${matrixUi.filter === "four" ? "is-active" : ""}" data-matrix-filter="four">🏆 4-Client Hubs (${stats.fourClientHubs})</button>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "major" ? "is-active" : ""}" data-matrix-filter="major">🔷 3+ Clients (${stats.majorHubs})</button>
+      </div>
+
+      <div class="matrix-clients-row">
+        <span class="matrix-pills-label">Companies:</span>
+        ${matrixData.clientColumns
+          .map((col) => {
+            const isChecked = !matrixUi.selectedClients.length || matrixUi.selectedClients.includes(col);
+            return `<label class="matrix-client-check"><input type="checkbox" data-matrix-client="${escapeHtml(col)}" ${isChecked ? "checked" : ""} /> <span>${escapeHtml(col)}</span></label>`;
+          })
+          .join("")}
+      </div>
+    </article>
+  `;
+
+  let tbodyContent = "";
+  if (filtered.rows.length === 0) {
+    tbodyContent = `
+      <tr>
+        <td colspan="${filtered.columns.length + 3}" class="matrix-empty-row">
+          <div class="empty-state" style="padding: 30px; text-align: center;">
+            <p>No locations match "<strong>${escapeHtml(matrixUi.search || matrixUi.filter)}</strong>".</p>
+            <button type="button" id="matrixResetFiltersBtn" class="primary-button compact-button" style="margin-top: 8px;">Reset filters</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  } else {
+    tbodyContent = filtered.rows
+      .map((row, idx) => {
+        let hubBadge = "";
+        if (row.clientCount === 4) {
+          hubBadge = `<span class="badge badge-purple" title="All 4 client institutions present">🏆 4 Clients</span>`;
+        } else if (row.clientCount === 3) {
+          hubBadge = `<span class="badge badge-blue" title="3 client institutions present">⭐ 3 Clients</span>`;
+        } else if (row.clientCount === 2) {
+          hubBadge = `<span class="badge badge-teal" title="2 client institutions present">2 Clients</span>`;
+        }
+
+        let statusBadge = "";
+        if (row.hasOverdue) {
+          statusBadge = `<span class="badge badge-danger">🔴 Overdue</span>`;
+        } else if (row.hasPending) {
+          statusBadge = `<span class="badge badge-warning">🔵 Due</span>`;
+        }
+
+        const clientCells = filtered.columns
+          .map((col) => {
+            const list = row.clients[col];
+            if (!list || !list.length) {
+              return `<td class="matrix-cell matrix-cell-empty" title="No ${escapeHtml(col)} location in ${escapeHtml(row.town)}"><span class="matrix-empty-dash">—</span></td>`;
+            }
+
+            const itemsHtml = list
+              .map((item) => {
+                const s = item.site;
+                let badge = "";
+                let itemClass = "matrix-site-item";
+                if (item.status === "overdue") {
+                  itemClass += " is-overdue";
+                  badge = `<span class="badge badge-danger">🔴 Overdue${item.pendingPlan?.due_by ? ` · ${formatShortDate(item.pendingPlan.due_by)}` : ""}</span>`;
+                } else if (item.status === "pending") {
+                  itemClass += " is-pending";
+                  badge = `<span class="badge badge-warning">🔵 Due${item.pendingPlan?.due_by ? ` · ${formatShortDate(item.pendingPlan.due_by)}` : ""}</span>`;
+                } else if (item.status === "done") {
+                  itemClass += " is-done";
+                  badge = `<span class="badge badge-ok">🟢 Done${item.lastDone?.done_at ? ` · ${formatShortDate(item.lastDone.done_at)}` : ""}${item.lastDone?.service_call_number ? ` · SC#${escapeHtml(item.lastDone.service_call_number)}` : ""}</span>`;
+                } else {
+                  badge = `<span class="badge badge-muted">⚪ Check-up</span>`;
+                }
+
+                const phoneLink = s.phone
+                  ? `<a href="tel:${escapeHtml(s.phone)}" class="matrix-phone-link" title="Call branch: ${escapeHtml(s.phone)}">📞 ${escapeHtml(s.phone)}</a>`
+                  : "";
+
+                const addBtn = (item.status === "pending" || item.status === "overdue")
+                  ? `<button type="button" class="secondary-button compact-button" data-matrix-add-site="${escapeHtml(s.id)}" title="Add ${escapeHtml(s.name)} stop to trip itinerary">+ Stop</button>`
+                  : "";
+
+                return `
+                  <div class="${itemClass}">
+                    <div class="matrix-site-head">
+                      <span class="matrix-site-name">${escapeHtml(s.name)}</span>
+                      ${badge}
+                    </div>
+                    <div class="matrix-site-details">
+                      ${s.address ? `<div class="small muted">${escapeHtml(s.address)}</div>` : ""}
+                      ${s.contact_name ? `<div class="small muted">Contact: ${escapeHtml(s.contact_name)}</div>` : ""}
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px;">
+                      ${phoneLink}
+                      ${addBtn}
+                    </div>
+                  </div>
+                `;
+              })
+              .join("");
+
+            return `<td class="matrix-cell matrix-cell-active">${itemsHtml}</td>`;
+          })
+          .join("");
+
+        return `
+          <tr>
+            <td style="text-align: center; color: #64748b; font-weight: 600;">${idx + 1}</td>
+            <td class="sticky-col matrix-town-cell">
+              <span class="matrix-town-name">${escapeHtml(row.town)}</span>
+              <div class="matrix-town-meta">
+                ${hubBadge}
+                ${statusBadge}
+                ${row.region ? `<span class="small muted">${escapeHtml(row.region)}</span>` : ""}
+              </div>
+            </td>
+            ${clientCells}
+            <td class="matrix-cell-action print-hide">
+              <button type="button" class="primary-button compact-button" data-matrix-plan-town="${escapeHtml(row.town)}" title="Plan shortest trip from ABSL office to ${escapeHtml(row.town)} with stops on the way">
+                🚗 Plan Trip
+              </button>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  const table = `
+    <div class="matrix-table-container">
+      <table class="matrix-table ${matrixUi.density === "detailed" ? "matrix-detailed" : "matrix-compact"}">
+        <thead>
+          <tr>
+            <th class="matrix-th-num">#</th>
+            <th class="matrix-th-town sticky-col">Location (1 → ${filtered.rows.length})</th>
+            ${filtered.columns.map((col) => `<th class="matrix-th-client">${escapeHtml(col)}</th>`).join("")}
+            <th class="matrix-th-action print-hide">Quick Route</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tbodyContent}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  return `
+    ${statCards}
+    ${toolbar}
+    ${table}
+  `;
+}
+
 function tripPlannerPage() {
   const unavailable = servicePlanUnavailable();
+  const currentView = tripUi.view || "matrix";
+
+  const viewSwitcher = `
+    <div class="trip-view-bar print-hide">
+      <div class="trip-view-segmented">
+        <button type="button" class="view-segment-btn ${currentView === "matrix" ? "is-active" : ""}" id="switchViewMatrix">
+          🗺️ Location × Company Coverage Grid
+        </button>
+        <button type="button" class="view-segment-btn ${currentView === "route" ? "is-active" : ""}" id="switchViewRoute">
+          🚗 Route & Detour Planner
+        </button>
+      </div>
+      <span class="small muted">${
+        currentView === "matrix"
+          ? "Locations sorted A–Z with multi-client presence, status badges and direct routing"
+          : "2-opt TSP route optimizer from ABSL office with automatic detour stops"
+      }</span>
+    </div>
+  `;
+
+  if (currentView === "matrix") {
+    return `
+      ${unavailable}
+      ${viewSwitcher}
+      ${renderLocationMatrix()}
+    `;
+  }
+
   const trip = computeTrip();
   const openJobs = state.tickets.filter((t) => t.status === "new" || t.status === "in_progress");
   const clients = servicePlanClients();
@@ -6231,6 +6489,7 @@ function tripPlannerPage() {
 
   return `
     ${unavailable}
+    ${viewSwitcher}
     <section class="trip-layout">
       ${controls}
       <article class="panel trip-result">
@@ -6243,6 +6502,7 @@ function tripPlannerPage() {
 }
 
 function drawTripMap() {
+  if (tripUi.view === "matrix") return;
   const trip = computeTrip();
   if (!trip.dest || trip.dest.unresolved || !trip.order.length) return;
   const map = newLeafletMap("tripMap");
@@ -6388,6 +6648,111 @@ async function shareTrip() {
 }
 
 function bindTripPlannerEvents() {
+  // View Switchers
+  const switchMatrix = document.querySelector("#switchViewMatrix");
+  if (switchMatrix) {
+    switchMatrix.onclick = () => {
+      tripUi.view = "matrix";
+      render();
+    };
+  }
+  const switchRoute = document.querySelector("#switchViewRoute");
+  if (switchRoute) {
+    switchRoute.onclick = () => {
+      tripUi.view = "route";
+      render();
+      drawTripMap();
+    };
+  }
+
+  // Matrix Search
+  const searchInput = document.querySelector("#matrixSearchInput");
+  if (searchInput) {
+    searchInput.oninput = () => {
+      matrixUi.search = searchInput.value;
+      render();
+      const el = document.querySelector("#matrixSearchInput");
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    };
+  }
+  const clearSearch = document.querySelector("#matrixClearSearch");
+  if (clearSearch) {
+    clearSearch.onclick = () => {
+      matrixUi.search = "";
+      render();
+    };
+  }
+
+  // Matrix Filter Pills
+  document.querySelectorAll("[data-matrix-filter]").forEach((pill) => {
+    pill.onclick = () => {
+      matrixUi.filter = pill.dataset.matrixFilter;
+      render();
+    };
+  });
+
+  // Matrix Density Toggle
+  document.querySelectorAll("[data-matrix-density]").forEach((btn) => {
+    btn.onclick = () => {
+      matrixUi.density = btn.dataset.matrixDensity;
+      render();
+    };
+  });
+
+  // Matrix Client Checkboxes
+  document.querySelectorAll("[data-matrix-client]").forEach((cb) => {
+    cb.onchange = () => {
+      const allCols = buildLocationMatrix(state.clientSites, state.plannedServices).clientColumns;
+      const current = matrixUi.selectedClients.length ? new Set(matrixUi.selectedClients) : new Set(allCols);
+      if (cb.checked) current.add(cb.dataset.matrixClient);
+      else current.delete(cb.dataset.matrixClient);
+      matrixUi.selectedClients = current.size === allCols.length ? [] : Array.from(current);
+      render();
+    };
+  });
+
+  // Plan Trip from Town Row
+  document.querySelectorAll("[data-matrix-plan-town]").forEach((btn) => {
+    btn.onclick = () => {
+      const town = btn.dataset.matrixPlanTown;
+      tripUi.dest = `place:${town}`;
+      tripUi.view = "route";
+      render();
+      drawTripMap();
+      showToast(`Trip set to ${town}. Shortest route calculated!`, "info");
+    };
+  });
+
+  // Add Site Stop to Trip Itinerary
+  document.querySelectorAll("[data-matrix-add-site]").forEach((btn) => {
+    btn.onclick = () => {
+      const siteId = `site:${btn.dataset.matrixAddSite}`;
+      tripUi.added.add(siteId);
+      tripUi.skipped.delete(siteId);
+      showToast("Added site to trip stops!", "info");
+    };
+  });
+
+  // Reset Filters
+  const resetBtn = document.querySelector("#matrixResetFiltersBtn");
+  if (resetBtn) {
+    resetBtn.onclick = () => {
+      matrixUi.search = "";
+      matrixUi.filter = "all";
+      matrixUi.selectedClients = [];
+      render();
+    };
+  }
+
+  // Matrix Print
+  const printBtn = document.querySelector("#matrixPrintBtn");
+  if (printBtn) {
+    printBtn.onclick = () => window.print();
+  }
+
   const form = document.querySelector("#tripForm");
   if (form) {
     form.querySelectorAll('input[name="tripStart"]').forEach((input) => {
@@ -6533,7 +6898,8 @@ function servicePlanPage() {
       <div class="panel-title">
         <h2>Planned services</h2>
         <div class="action-row">
-          <a class="primary-button" href="trip-planner.html">Plan a trip</a>
+          <a class="primary-button" href="trip-planner.html#route">Plan a trip</a>
+          <a class="secondary-button" href="trip-planner.html#matrix">🗺️ Location Coverage Grid</a>
           <button class="secondary-button" type="button" id="planImportBtn">Import from Excel</button>
           <button class="secondary-button" type="button" id="planMarkDueBtn">Mark sites due</button>
           <button class="secondary-button" type="button" id="planExcelBtn">Download Excel</button>
@@ -7711,6 +8077,7 @@ function technicianView() {
           <h2>${isMine ? "My Jobs" : "Technician Jobs"}</h2>
           <div class="action-row">
             <span class="badge badge-muted">${assigned.length} assigned</span>
+            <a class="secondary-button compact-button" href="trip-planner.html">🗺️ Trip & Coverage Grid</a>
             <a class="secondary-button compact-button" href="my-reports.html">My Job Reports</a>
             <button class="secondary-button compact-button" type="button" id="logTicketBtn">➕ Log a Job</button>
           </div>

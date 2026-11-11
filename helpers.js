@@ -799,13 +799,34 @@ function parseSheetDate(value) {
   return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-/** Site names compared loosely: case, punctuation and a leading/trailing "Seylan" ignored. */
+const SITE_SPELLING_ALIASES = {
+  aranaganwila: "aralaganwila",
+  baticaloa: "batticaloa",
+  chawakachcheri: "chavakachcheri",
+  chankani: "chankanai",
+  "cinnomon gardens": "cinnamon gardens",
+  kaluthara: "kalutara",
+  katharagama: "kataragama",
+  "matara bazzar": "matara bazaar",
+  maradagahamula: "marandagahamula",
+  mathugama: "matugama",
+  nochchiyagama: "nochiyagama",
+  pallekale: "pallekele",
+  ranpokunugama: "ranpokunagama",
+  samanthurai: "sammanthurai",
+  siyabalanduwa: "siyambalanduwa",
+  "kurunegala i": "kurunegala 1",
+  "kurunegala ii": "kurunegala 2"
+};
+
+/** Site names compared loosely: case, punctuation and a leading/trailing "Seylan" ignored, plus common spelling variants. */
 function normalizeSiteName(value) {
-  return String(value || "")
+  const norm = String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/^seylan\s+|\s+seylan$/g, "")
     .trim();
+  return SITE_SPELLING_ALIASES[norm] || norm;
 }
 
 const PLAN_IMPORT_COLUMNS = {
@@ -914,6 +935,170 @@ function parseServicePlanImport(rows, existingSites, places, { defaultClient = "
   return { sites: [...sites.values()], services: [...services.values()], warnings };
 }
 
+
+function buildLocationMatrix(sites, plannedServices, options) {
+  const opts = options || {};
+  const asOf = opts.asOfDate || new Date().toISOString().slice(0, 10);
+  const activeSites = (sites || []).filter((s) => s && !s.is_base && s.active !== false);
+  const plans = plannedServices || [];
+
+  const plansBySite = new Map();
+  plans.forEach((p) => {
+    if (!p || !p.site_id) return;
+    if (!plansBySite.has(p.site_id)) plansBySite.set(p.site_id, []);
+    plansBySite.get(p.site_id).push(p);
+  });
+
+  const clientSet = new Set();
+  activeSites.forEach((s) => {
+    if (s.client) clientSet.add(s.client.trim());
+  });
+
+  const standardPriority = ["Seylan Bank", "National Youth Corps", "SLT-Mobitel", "Central Environmental Authority"];
+  const clientColumns = standardPriority.filter((c) => clientSet.has(c));
+  clientSet.forEach((c) => {
+    if (!clientColumns.includes(c)) clientColumns.push(c);
+  });
+
+  const townMap = new Map();
+  activeSites.forEach((s) => {
+    const townName = (s.place || s.name || "Unknown").trim();
+    if (!townMap.has(townName)) {
+      townMap.set(townName, {
+        town: townName,
+        region: s.region || "",
+        lat: s.lat != null ? Number(s.lat) : null,
+        lng: s.lng != null ? Number(s.lng) : null,
+        clients: {},
+        totalSites: 0,
+        hasPending: false,
+        hasOverdue: false,
+        clientCount: 0
+      });
+    }
+    const entry = townMap.get(townName);
+    if (!entry.clients[s.client]) {
+      entry.clients[s.client] = [];
+    }
+
+    const sitePlans = plansBySite.get(s.id) || [];
+    const pendingPlan = sitePlans.find((p) => p.status === "pending");
+    const isOverdue = !!(pendingPlan && pendingPlan.due_by && pendingPlan.due_by < asOf);
+
+    let lastDone = null;
+    sitePlans.forEach((p) => {
+      if (p.status === "done" && p.done_at) {
+        if (!lastDone || p.done_at > lastDone.done_at) lastDone = p;
+      }
+    });
+
+    let status = "active";
+    if (isOverdue) status = "overdue";
+    else if (pendingPlan) status = "pending";
+    else if (lastDone) status = "done";
+
+    if (pendingPlan) entry.hasPending = true;
+    if (isOverdue) entry.hasOverdue = true;
+
+    entry.clients[s.client].push({
+      site: s,
+      status,
+      pendingPlan,
+      lastDone,
+      isOverdue
+    });
+    entry.totalSites += 1;
+  });
+
+  const rows = Array.from(townMap.values())
+    .map((t) => {
+      t.clientCount = Object.keys(t.clients).length;
+      return t;
+    })
+    .sort((a, b) => a.town.localeCompare(b.town));
+
+  const stats = {
+    totalTowns: rows.length,
+    totalSites: activeSites.length,
+    multiClientTowns: rows.filter((r) => r.clientCount >= 2).length,
+    majorHubs: rows.filter((r) => r.clientCount >= 3).length,
+    fourClientHubs: rows.filter((r) => r.clientCount >= 4).length,
+    townsWithPending: rows.filter((r) => r.hasPending).length,
+    townsWithOverdue: rows.filter((r) => r.hasOverdue).length
+  };
+
+  return { clientColumns, rows, stats };
+}
+
+function filterLocationMatrix(matrixData, filterOptions) {
+  if (!matrixData || !Array.isArray(matrixData.rows)) {
+    return { columns: [], rows: [], totalMatching: 0 };
+  }
+  const opts = filterOptions || {};
+  const query = (opts.search || "").trim().toLowerCase();
+  const filter = opts.filter || "all";
+  const selectedClients = opts.selectedClients && opts.selectedClients.length ? new Set(opts.selectedClients) : null;
+
+  const filteredRows = matrixData.rows.filter((row) => {
+    if (filter === "pending" && !row.hasPending) return false;
+    if (filter === "overdue" && !row.hasOverdue) return false;
+    if (filter === "multi" && row.clientCount < 2) return false;
+    if (filter === "major" && row.clientCount < 3) return false;
+    if (filter === "four" && row.clientCount < 4) return false;
+
+    if (query) {
+      if (row.town.toLowerCase().includes(query)) return true;
+      if (row.region && row.region.toLowerCase().includes(query)) return true;
+
+      let matchedInSite = false;
+      for (const clientName in row.clients) {
+        if (clientName.toLowerCase().includes(query)) {
+          matchedInSite = true;
+          break;
+        }
+        const list = row.clients[clientName];
+        for (const item of list) {
+          const s = item.site || {};
+          if (s.name && s.name.toLowerCase().includes(query)) {
+            matchedInSite = true;
+            break;
+          }
+          if (s.phone && s.phone.toLowerCase().includes(query)) {
+            matchedInSite = true;
+            break;
+          }
+          if (s.contact_name && s.contact_name.toLowerCase().includes(query)) {
+            matchedInSite = true;
+            break;
+          }
+          if (item.pendingPlan && item.pendingPlan.due_by && item.pendingPlan.due_by.includes(query)) {
+            matchedInSite = true;
+            break;
+          }
+          if (item.lastDone && item.lastDone.service_call_number && item.lastDone.service_call_number.toLowerCase().includes(query)) {
+            matchedInSite = true;
+            break;
+          }
+        }
+        if (matchedInSite) break;
+      }
+      if (!matchedInSite) return false;
+    }
+
+    return true;
+  });
+
+  const columns = selectedClients
+    ? matrixData.clientColumns.filter((c) => selectedClients.has(c))
+    : matrixData.clientColumns;
+
+  return {
+    columns,
+    rows: filteredRows,
+    totalMatching: filteredRows.length
+  };
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     UPLOAD_LIMITS,
@@ -972,6 +1157,8 @@ if (typeof module !== "undefined" && module.exports) {
     parseSheetDate,
     normalizeSiteName,
     PLAN_IMPORT_COLUMNS,
-    parseServicePlanImport
+    parseServicePlanImport,
+    buildLocationMatrix,
+    filterLocationMatrix
   };
 }

@@ -63,20 +63,21 @@ tests/service-plan.test.mjs):
 
 | Client | Sites | Source |
 |---|---|---|
-| Seylan Bank | 206 | every location named in the Seylan service sheets (2024-25, 2025-26, 2026-27), spellings merged |
+| Seylan Bank | 209 | every location named in the Seylan service sheets (2024-25, 2025-26, 2026-27, and 2026/27 master tracker Sheet1), spellings merged |
 | National Youth Corps | 61 | centres and device serials from the 2026-27 costing |
 | SLT-Mobitel | 47 | office list from an online search, to be confirmed |
 | Central Environmental Authority | 26 | office list from an online search, to be confirmed |
 | ABSL Office | 1 | where trips start |
 
-The Seylan sheets are right about every service they record, just not kept
-up to date. 0041 loaded all 340 recorded services as history (2024/25 1st and
-2nd service, 2025/26, 2026/27; date and service call number where given), so
-185 of the 206 sites show a last service. Every active Seylan branch and NYC
-centre with no 2026/27 service yet is Pending for 2026/27, due by 31 Jul 2027
-(nothing overdue). If one was done but not written down, mark it done or
-import the updated sheet. (0040 had removed the earlier statuses 0039 guessed
-from the "TO COMPLETE" list.)
+The Seylan sheets are right about every service they record. 0041 loaded all 340
+recorded historical services (2024/25 1st and 2nd service, 2025/26, early 2026/27).
+Migration 0042 synchronized the updated 2026/27 execution tracker (Sheet1):
+131 completed services (from August 2026 up to 17 November 2026) are marked Done
+with their exact service dates and service call numbers (including 10780–10822
+and September jobs). The remaining 78 active Seylan branches are Pending for
+2026/27, due by 31 Jul 2027 (nothing falsely overdue; old 2025/26 pending records
+rolled over). Every site now displays its real last service in the Service Plan
+and Trip Planner.
 
 Positions are **town-level** from OpenStreetMap (© OpenStreetMap
 contributors); a stop may be a few km off until its exact position is set.
