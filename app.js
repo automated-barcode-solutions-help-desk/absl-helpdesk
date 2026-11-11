@@ -198,10 +198,10 @@ function showToast(message, type = "info") {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   
-  let icon = "ℹ️";
-  if (type === "success") icon = "✅";
-  if (type === "error") icon = "❌";
-  if (type === "warning") icon = "⚠️";
+  let icon = "";
+  if (type === "success") icon = "OK";
+  if (type === "error") icon = "!";
+  if (type === "warning") icon = "!";
 
   toast.innerHTML = `
     <div class="toast-icon">${icon}</div>
@@ -232,10 +232,10 @@ function showModal({ title, body, icon = "info", actions = [] }) {
       return;
     }
 
-    let iconChar = "ℹ️";
-    if (icon === "success") iconChar = "✅";
-    if (icon === "error") iconChar = "❌";
-    if (icon === "warning") iconChar = "⚠️";
+    let iconChar = "i";
+    if (icon === "success") iconChar = "OK";
+    if (icon === "error") iconChar = "!";
+    if (icon === "warning") iconChar = "!";
 
     card.innerHTML = `
       <div class="modal-icon modal-icon-${icon}">${iconChar}</div>
@@ -859,7 +859,7 @@ const WELCOME_TOUR_ROLE_STEPS = {
     },
     {
       title: "Log a Job",
-      body: "**➕ Log a Job** is for work that didn't come through the portal — a customer who phoned you, or a job you need to do yourself. Whatever you log is assigned to you, unless you answer **Yes** to opening it to every technician; you can also hand it to a colleague from the job later."
+      body: "**Log a Job** is for work that didn't come through the portal — a customer who phoned you, or a job you need to do yourself. Whatever you log is assigned to you, unless you answer **Yes** to opening it to every technician; you can also hand it to a colleague from the job later."
     },
     {
       title: "Your job counts and reports",
@@ -877,7 +877,7 @@ const WELCOME_TOUR_ROLE_STEPS = {
     },
     {
       title: "Callbacks, phone-ins and reports",
-      body: "**Callback Queue** lists customers waiting for a call — call, then press **Done**. **➕ Log a Job** records a phone-in. **Reports** builds technician, customer, date, fault, service call and all-jobs reports to filter, download or print."
+      body: "**Callback Queue** lists customers waiting for a call — call, then press **Done**. **Log a Job** records a phone-in. **Reports** builds technician, customer, date, fault, service call and all-jobs reports to filter, download or print."
     },
     {
       title: "Keeping watch",
@@ -3570,7 +3570,7 @@ function ticketCardHtml(ticket, canDeleteTicket) {
   // is whichever staff member logged it, not who the job is actually for.
   // Lead with the caller's own name/number when there is one.
   const whoLine = ticket.callerName
-    ? `📞 ${escapeHtml(ticket.callerName)}${ticket.callerPhone ? ` (${escapeHtml(ticket.callerPhone)})` : ""} · logged by ${escapeHtml(ticket.customer || "staff")}`
+    ? `${escapeHtml(ticket.callerName)}${ticket.callerPhone ? ` (${escapeHtml(ticket.callerPhone)})` : ""} · logged by ${escapeHtml(ticket.customer || "staff")}`
     : escapeHtml(ticket.customer || "");
 
   return `
@@ -3582,7 +3582,7 @@ function ticketCardHtml(ticket, canDeleteTicket) {
           ${statusBadge(ticket.status)}
           <span class="badge badge-muted">${escapeHtml(jobTypeLabel(ticket.jobType))}</span>
           <span class="badge ${safePriority === "High" ? "badge-danger" : "badge-muted"}">${safePriority}</span>
-          ${ticket.callback ? `<span class="badge badge-ok">☎ Callback</span>` : ""}
+          ${ticket.callback ? `<span class="badge badge-ok">Callback</span>` : ""}
           ${ticket.id === state.selectedTicketId ? `<span class="badge badge-ok">Open</span>` : ""}
         </div>
         <p class="small muted">
@@ -5093,7 +5093,7 @@ function attachmentGallery(detail, { allowDelete = true } = {}) {
 
           if (attachment.file_type === "voice") {
             return `<div class="attachment attachment-voice">
-                      <strong>🎙 Voice note</strong>
+                      <strong>Voice note</strong>
                       <audio controls preload="none" src="${escapeHtml(attachment.url)}"></audio>
                       <span class="small muted">${name}${size}</span>
                       ${deleteButton}
@@ -5102,7 +5102,7 @@ function attachmentGallery(detail, { allowDelete = true } = {}) {
 
           if (attachment.file_type === "video") {
             return `<div class="attachment attachment-video">
-                      <strong>🎬 Video clip</strong>
+                      <strong>Video clip</strong>
                       <video controls preload="metadata" src="${escapeHtml(attachment.url)}"></video>
                       <span class="small muted">${name}${size}</span>
                       ${deleteButton}
@@ -5114,7 +5114,7 @@ function attachmentGallery(detail, { allowDelete = true } = {}) {
                       <a href="${escapeHtml(attachment.url)}" target="_blank" rel="noopener noreferrer">
                         <img src="${escapeHtml(attachment.url)}" alt="Service call receipt: ${name}" loading="lazy" />
                       </a>
-                      <figcaption class="small muted">🧾 Service call receipt · ${name}${size}</figcaption>
+                      <figcaption class="small muted">Service call receipt · ${name}${size}</figcaption>
                       ${deleteButton}
                     </figure>`;
           }
@@ -5279,7 +5279,7 @@ function renderTicketDetail(ticket) {
         ${
           callback
             ? `<div class="inline-banner inline-banner-warning callback-banner">
-                 ☎ <strong>Callback requested</strong> on ${escapeHtml(callback.phone)}
+                 <strong>Callback requested</strong> on ${escapeHtml(callback.phone)}
                  ${
                    isOfficeRole(role)
                      ? `<button class="primary-button compact-button" type="button" data-complete-callback="${escapeHtml(callback.id)}">Mark as called</button>`
@@ -7823,7 +7823,7 @@ function customerView() {
               <label for="location">Location</label>
               <input id="location" name="location" maxlength="200" placeholder="Customer site location" />
               <div class="recorder-row">
-                <button class="secondary-button compact-button" type="button" id="useGpsBtn">📍 Use my location</button>
+                <button class="secondary-button compact-button" type="button" id="useGpsBtn">Use my location</button>
                 <span id="gpsStatus" class="small muted" aria-live="polite"></span>
               </div>
               <input type="hidden" name="lat" id="ticketLat" />
@@ -7915,7 +7915,7 @@ function operatorView() {
           <h2>Ticket Queue</h2>
           <div class="action-row">
             <a class="secondary-button" href="reports.html">Reports</a>
-            <button class="secondary-button" type="button" id="logTicketBtn">➕ Log a Job</button>
+            <button class="secondary-button" type="button" id="logTicketBtn">Log a Job</button>
             <button class="secondary-button" type="button" id="loadRealTicketsBtn">Refresh</button>
           </div>
         </div>
@@ -8078,7 +8078,7 @@ function technicianView() {
             <span class="badge badge-muted">${assigned.length} assigned</span>
             <a class="secondary-button compact-button" href="trip-planner.html">Trip & Coverage Matrix</a>
             <a class="secondary-button compact-button" href="my-reports.html">My Job Reports</a>
-            <button class="secondary-button compact-button" type="button" id="logTicketBtn">➕ Log a Job</button>
+            <button class="secondary-button compact-button" type="button" id="logTicketBtn">Log a Job</button>
           </div>
         </div>
         ${
@@ -8731,7 +8731,7 @@ function render() {
   if (isOfficeRole() && route !== "operator") {
     headerHtml =
       `<div class="inline-banner inline-banner-warning" style="margin-bottom: 20px;">
-         👁 <strong>Preview:</strong> this is the ${escapeHtml(views[route].title)} as its users see it.
+         <strong>Preview:</strong> this is the ${escapeHtml(views[route].title)} as its users see it.
          <a href="operator.html">Back to the Operator dashboard</a>
        </div>` + headerHtml;
   }
@@ -8740,7 +8740,7 @@ function render() {
   if (!supabaseClient) {
     headerHtml = `
       <div class="inline-banner inline-banner-warning" style="margin-bottom: 20px;">
-        ⚠️ <strong>Database Offline:</strong> Running in demo mock mode (using LocalStorage). Configure config.js to connect to Supabase.
+        <strong>Database Offline:</strong> Running in demo mock mode (using LocalStorage). Configure config.js to connect to Supabase.
       </div>
     ` + headerHtml;
   }
