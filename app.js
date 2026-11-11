@@ -6070,29 +6070,29 @@ function renderLocationMatrix() {
   const statCards = `
     <section class="dashboard-grid stats-grid matrix-stats-grid">
       <article class="stat-card">
-        <span>Total Towns</span>
+        <span>Total towns</span>
         <strong>${stats.totalTowns}</strong>
-        <small class="muted">Indexed 1 to ${stats.totalTowns} (A–Z)</small>
+        <small class="muted">Indexed 1 to ${stats.totalTowns} (A to Z)</small>
       </article>
       <article class="stat-card">
-        <span>Active Sites</span>
+        <span>Active sites</span>
         <strong>${stats.totalSites}</strong>
-        <small class="muted">Across all clients</small>
+        <small class="muted">All institutions</small>
       </article>
       <article class="stat-card">
-        <span>Multi-Client Hubs</span>
-        <strong style="color: #0284c7;">${stats.multiClientTowns}</strong>
-        <small class="muted">2+ Companies present</small>
+        <span>Multi-client hubs</span>
+        <strong>${stats.multiClientTowns}</strong>
+        <small class="muted">2 or more clients</small>
       </article>
       <article class="stat-card">
-        <span>4-Client Mega Hubs</span>
-        <strong style="color: #7c3aed;">${stats.fourClientHubs}</strong>
-        <small class="muted">Ampara, Anuradhapura, Kegalle, Mannar, Nuwara Eliya</small>
+        <span>Major hubs</span>
+        <strong>${stats.majorHubs}</strong>
+        <small class="muted">3 or more clients</small>
       </article>
       <article class="stat-card">
-        <span>Work Due</span>
-        <strong style="color: #dc2626;">${stats.townsWithPending}</strong>
-        <small class="muted">Towns with pending services</small>
+        <span>Pending service</span>
+        <strong>${stats.townsWithPending}</strong>
+        <small class="muted">Towns with work due</small>
       </article>
     </section>
   `;
@@ -6101,30 +6101,29 @@ function renderLocationMatrix() {
     <article class="panel matrix-toolbar print-hide">
       <div class="matrix-filter-row">
         <div class="matrix-search-wrap">
-          <span class="matrix-search-icon">🔍</span>
           <input type="search" id="matrixSearchInput" class="matrix-search-input"
-                 placeholder="Search town, branch name, contact, phone, or service call..."
+                 placeholder="Search town, branch, phone, or service call..."
                  value="${escapeHtml(matrixUi.search)}" />
-          ${matrixUi.search ? `<button type="button" id="matrixClearSearch" class="matrix-search-clear" title="Clear search">✕</button>` : ""}
+          ${matrixUi.search ? `<button type="button" id="matrixClearSearch" class="matrix-search-clear" title="Clear search">Clear</button>` : ""}
         </div>
         <div class="matrix-view-toggle">
-          <button type="button" class="matrix-density-btn ${matrixUi.density === "compact" ? "is-active" : ""}" data-matrix-density="compact" title="High-density matrix table">Compact</button>
-          <button type="button" class="matrix-density-btn ${matrixUi.density === "detailed" ? "is-active" : ""}" data-matrix-density="detailed" title="Detailed cards with contact info">Detailed</button>
-          <button type="button" class="secondary-button compact-button" id="matrixPrintBtn" title="Print matrix sheet">🖨️ Print Sheet</button>
+          <button type="button" class="matrix-density-btn ${matrixUi.density === "compact" ? "is-active" : ""}" data-matrix-density="compact">Compact</button>
+          <button type="button" class="matrix-density-btn ${matrixUi.density === "detailed" ? "is-active" : ""}" data-matrix-density="detailed">Detailed</button>
+          <button type="button" class="secondary-button compact-button" id="matrixPrintBtn">Print sheet</button>
         </div>
       </div>
 
       <div class="matrix-pills-row">
-        <span class="matrix-pills-label">Filter:</span>
-        <button type="button" class="matrix-pill ${matrixUi.filter === "all" ? "is-active" : ""}" data-matrix-filter="all">All Towns (${stats.totalTowns})</button>
-        <button type="button" class="matrix-pill matrix-pill-danger ${matrixUi.filter === "pending" ? "is-active" : ""}" data-matrix-filter="pending">🔴 Work Due (${stats.townsWithPending})</button>
-        <button type="button" class="matrix-pill matrix-pill-hub ${matrixUi.filter === "multi" ? "is-active" : ""}" data-matrix-filter="multi">⭐ Multi-Client Hubs (${stats.multiClientTowns})</button>
-        <button type="button" class="matrix-pill matrix-pill-mega ${matrixUi.filter === "four" ? "is-active" : ""}" data-matrix-filter="four">🏆 4-Client Hubs (${stats.fourClientHubs})</button>
-        <button type="button" class="matrix-pill ${matrixUi.filter === "major" ? "is-active" : ""}" data-matrix-filter="major">🔷 3+ Clients (${stats.majorHubs})</button>
+        <span class="matrix-pills-label">Show:</span>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "all" ? "is-active" : ""}" data-matrix-filter="all">All (${stats.totalTowns})</button>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "pending" ? "is-active" : ""}" data-matrix-filter="pending">Pending service (${stats.townsWithPending})</button>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "multi" ? "is-active" : ""}" data-matrix-filter="multi">Multi-client (${stats.multiClientTowns})</button>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "four" ? "is-active" : ""}" data-matrix-filter="four">4 clients (${stats.fourClientHubs})</button>
+        <button type="button" class="matrix-pill ${matrixUi.filter === "major" ? "is-active" : ""}" data-matrix-filter="major">3+ clients (${stats.majorHubs})</button>
       </div>
 
       <div class="matrix-clients-row">
-        <span class="matrix-pills-label">Companies:</span>
+        <span class="matrix-pills-label">Clients:</span>
         ${matrixData.clientColumns
           .map((col) => {
             const isChecked = !matrixUi.selectedClients.length || matrixUi.selectedClients.includes(col);
@@ -6140,9 +6139,9 @@ function renderLocationMatrix() {
     tbodyContent = `
       <tr>
         <td colspan="${filtered.columns.length + 3}" class="matrix-empty-row">
-          <div class="empty-state" style="padding: 30px; text-align: center;">
+          <div class="empty-state" style="padding: 24px; text-align: center;">
             <p>No locations match "<strong>${escapeHtml(matrixUi.search || matrixUi.filter)}</strong>".</p>
-            <button type="button" id="matrixResetFiltersBtn" class="primary-button compact-button" style="margin-top: 8px;">Reset filters</button>
+            <button type="button" id="matrixResetFiltersBtn" class="secondary-button compact-button" style="margin-top: 8px;">Reset filters</button>
           </div>
         </td>
       </tr>
@@ -6152,18 +6151,18 @@ function renderLocationMatrix() {
       .map((row, idx) => {
         let hubBadge = "";
         if (row.clientCount === 4) {
-          hubBadge = `<span class="badge badge-purple" title="All 4 client institutions present">🏆 4 Clients</span>`;
+          hubBadge = `<span class="badge badge-primary">4 clients</span>`;
         } else if (row.clientCount === 3) {
-          hubBadge = `<span class="badge badge-blue" title="3 client institutions present">⭐ 3 Clients</span>`;
+          hubBadge = `<span class="badge badge-muted">3 clients</span>`;
         } else if (row.clientCount === 2) {
-          hubBadge = `<span class="badge badge-teal" title="2 client institutions present">2 Clients</span>`;
+          hubBadge = `<span class="badge badge-muted">2 clients</span>`;
         }
 
         let statusBadge = "";
         if (row.hasOverdue) {
-          statusBadge = `<span class="badge badge-danger">🔴 Overdue</span>`;
+          statusBadge = `<span class="badge badge-danger">Overdue</span>`;
         } else if (row.hasPending) {
-          statusBadge = `<span class="badge badge-warning">🔵 Due</span>`;
+          statusBadge = `<span class="badge badge-warning">Due</span>`;
         }
 
         const clientCells = filtered.columns
@@ -6180,23 +6179,23 @@ function renderLocationMatrix() {
                 let itemClass = "matrix-site-item";
                 if (item.status === "overdue") {
                   itemClass += " is-overdue";
-                  badge = `<span class="badge badge-danger">🔴 Overdue${item.pendingPlan?.due_by ? ` · ${formatShortDate(item.pendingPlan.due_by)}` : ""}</span>`;
+                  badge = `<span class="badge badge-danger">Overdue${item.pendingPlan?.due_by ? ` · ${formatShortDate(item.pendingPlan.due_by)}` : ""}</span>`;
                 } else if (item.status === "pending") {
                   itemClass += " is-pending";
-                  badge = `<span class="badge badge-warning">🔵 Due${item.pendingPlan?.due_by ? ` · ${formatShortDate(item.pendingPlan.due_by)}` : ""}</span>`;
+                  badge = `<span class="badge badge-warning">Due${item.pendingPlan?.due_by ? ` · ${formatShortDate(item.pendingPlan.due_by)}` : ""}</span>`;
                 } else if (item.status === "done") {
                   itemClass += " is-done";
-                  badge = `<span class="badge badge-ok">🟢 Done${item.lastDone?.done_at ? ` · ${formatShortDate(item.lastDone.done_at)}` : ""}${item.lastDone?.service_call_number ? ` · SC#${escapeHtml(item.lastDone.service_call_number)}` : ""}</span>`;
+                  badge = `<span class="badge badge-ok">Done${item.lastDone?.done_at ? ` · ${formatShortDate(item.lastDone.done_at)}` : ""}${item.lastDone?.service_call_number ? ` · SC#${escapeHtml(item.lastDone.service_call_number)}` : ""}</span>`;
                 } else {
-                  badge = `<span class="badge badge-muted">⚪ Check-up</span>`;
+                  badge = `<span class="badge badge-muted">Active</span>`;
                 }
 
                 const phoneLink = s.phone
-                  ? `<a href="tel:${escapeHtml(s.phone)}" class="matrix-phone-link" title="Call branch: ${escapeHtml(s.phone)}">📞 ${escapeHtml(s.phone)}</a>`
+                  ? `<a href="tel:${escapeHtml(s.phone)}" class="matrix-phone-link" title="Call ${escapeHtml(s.phone)}">Tel: ${escapeHtml(s.phone)}</a>`
                   : "";
 
                 const addBtn = (item.status === "pending" || item.status === "overdue")
-                  ? `<button type="button" class="secondary-button compact-button" data-matrix-add-site="${escapeHtml(s.id)}" title="Add ${escapeHtml(s.name)} stop to trip itinerary">+ Stop</button>`
+                  ? `<button type="button" class="secondary-button compact-button" data-matrix-add-site="${escapeHtml(s.id)}" title="Add to trip route">Add stop</button>`
                   : "";
 
                 return `
@@ -6209,7 +6208,7 @@ function renderLocationMatrix() {
                       ${s.address ? `<div class="small muted">${escapeHtml(s.address)}</div>` : ""}
                       ${s.contact_name ? `<div class="small muted">Contact: ${escapeHtml(s.contact_name)}</div>` : ""}
                     </div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px;">
+                    <div class="matrix-site-actions">
                       ${phoneLink}
                       ${addBtn}
                     </div>
@@ -6224,7 +6223,7 @@ function renderLocationMatrix() {
 
         return `
           <tr>
-            <td style="text-align: center; color: #64748b; font-weight: 600;">${idx + 1}</td>
+            <td style="text-align: center; color: var(--muted); font-weight: 600;">${idx + 1}</td>
             <td class="sticky-col matrix-town-cell">
               <span class="matrix-town-name">${escapeHtml(row.town)}</span>
               <div class="matrix-town-meta">
@@ -6235,8 +6234,8 @@ function renderLocationMatrix() {
             </td>
             ${clientCells}
             <td class="matrix-cell-action print-hide">
-              <button type="button" class="primary-button compact-button" data-matrix-plan-town="${escapeHtml(row.town)}" title="Plan shortest trip from ABSL office to ${escapeHtml(row.town)} with stops on the way">
-                🚗 Plan Trip
+              <button type="button" class="secondary-button compact-button" data-matrix-plan-town="${escapeHtml(row.town)}" title="Plan route to ${escapeHtml(row.town)}">
+                Plan trip
               </button>
             </td>
           </tr>
@@ -6251,9 +6250,9 @@ function renderLocationMatrix() {
         <thead>
           <tr>
             <th class="matrix-th-num">#</th>
-            <th class="matrix-th-town sticky-col">Location (1 → ${filtered.rows.length})</th>
+            <th class="matrix-th-town sticky-col">Town (1 to ${filtered.rows.length})</th>
             ${filtered.columns.map((col) => `<th class="matrix-th-client">${escapeHtml(col)}</th>`).join("")}
-            <th class="matrix-th-action print-hide">Quick Route</th>
+            <th class="matrix-th-action print-hide">Route</th>
           </tr>
         </thead>
         <tbody>
@@ -6278,15 +6277,15 @@ function tripPlannerPage() {
     <div class="trip-view-bar print-hide">
       <div class="trip-view-segmented">
         <button type="button" class="view-segment-btn ${currentView === "matrix" ? "is-active" : ""}" id="switchViewMatrix">
-          🗺️ Location × Company Coverage Grid
+          Coverage Matrix
         </button>
         <button type="button" class="view-segment-btn ${currentView === "route" ? "is-active" : ""}" id="switchViewRoute">
-          🚗 Route & Detour Planner
+          Route Planner
         </button>
       </div>
       <span class="small muted">${
         currentView === "matrix"
-          ? "Locations sorted A–Z with multi-client presence, status badges and direct routing"
+          ? "Towns sorted A to Z with multi-client presence and direct trip routing."
           : "2-opt TSP route optimizer from ABSL office with automatic detour stops"
       }</span>
     </div>
@@ -6722,7 +6721,7 @@ function bindTripPlannerEvents() {
       tripUi.view = "route";
       render();
       drawTripMap();
-      showToast(`Trip set to ${town}. Shortest route calculated!`, "info");
+      showToast(`Trip destination set to ${town}. Detour route ready.`, "info");
     };
   });
 
@@ -6732,7 +6731,7 @@ function bindTripPlannerEvents() {
       const siteId = `site:${btn.dataset.matrixAddSite}`;
       tripUi.added.add(siteId);
       tripUi.skipped.delete(siteId);
-      showToast("Added site to trip stops!", "info");
+      showToast("Added site to trip stops.", "info");
     };
   });
 
@@ -6899,7 +6898,7 @@ function servicePlanPage() {
         <h2>Planned services</h2>
         <div class="action-row">
           <a class="primary-button" href="trip-planner.html#route">Plan a trip</a>
-          <a class="secondary-button" href="trip-planner.html#matrix">🗺️ Location Coverage Grid</a>
+          <a class="secondary-button" href="trip-planner.html#matrix">Coverage Matrix</a>
           <button class="secondary-button" type="button" id="planImportBtn">Import from Excel</button>
           <button class="secondary-button" type="button" id="planMarkDueBtn">Mark sites due</button>
           <button class="secondary-button" type="button" id="planExcelBtn">Download Excel</button>
@@ -8077,7 +8076,7 @@ function technicianView() {
           <h2>${isMine ? "My Jobs" : "Technician Jobs"}</h2>
           <div class="action-row">
             <span class="badge badge-muted">${assigned.length} assigned</span>
-            <a class="secondary-button compact-button" href="trip-planner.html">🗺️ Trip & Coverage Grid</a>
+            <a class="secondary-button compact-button" href="trip-planner.html">Trip & Coverage Matrix</a>
             <a class="secondary-button compact-button" href="my-reports.html">My Job Reports</a>
             <button class="secondary-button compact-button" type="button" id="logTicketBtn">➕ Log a Job</button>
           </div>
